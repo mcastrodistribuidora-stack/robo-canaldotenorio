@@ -38,6 +38,7 @@ jobs:
           META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
           META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}          
           FLICKR_API_KEY: ${{ secrets.FLICKR_API_KEY }}
         run: |
           if [ "${{ inputs.teste }}" = "true" ]; then python postar.py --teste; else python postar.py; fi
