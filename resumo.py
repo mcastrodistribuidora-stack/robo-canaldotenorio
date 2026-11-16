@@ -43,7 +43,7 @@ Responda SÓ com um JSON neste formato:
  "texto": "a notícia escrita, de 2 a 6 frases curtas",
  "pergunta": "pergunta para o torcedor comentar",
  "selo": "um destes: {selos}",
- "pessoas": ["nomes completos das pessoas principais, como aparecem nas manchetes, no máximo 2"]}}"""
+ "pessoas": ["nome completo de JOGADORES ou TÉCNICOS citados (para buscar foto). NÃO inclua jornalistas, comentaristas, presidentes ou dirigentes. No máximo 2. Lista vazia se não houver"]}}"""
 
 
 def _selo_por_palavras(t):
@@ -132,7 +132,7 @@ def plano_b(n, config):
     }
 
 
-GEMINI_MODELOS = ["gemini-flash-latest", "gemini-flash-lite-latest"]  # se um falhar/estourar a cota, tenta o outro
+GEMINI_MODELOS = ["gemini-flash-lite-latest", "gemini-flash-latest"]  # Lite primeiro (mais rápido); se falhar, tenta o outro
 
 
 def _json_da_resposta(texto):
@@ -144,19 +144,23 @@ def _chamar_gemini(prompt, config):
     modelos = config.get("resumo_ia", {}).get("modelos_gemini", GEMINI_MODELOS)
     ultimo_erro = None
     for modelo in modelos:
-        r = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent",
-            headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "content-type": "application/json"},
-            json={"contents": [{"parts": [{"text": prompt}]}],
-                  "generationConfig": {"temperature": 0.4, "responseMimeType": "application/json"}},
-            timeout=60)
-        if r.status_code in (404, 429, 500, 503):
-            ultimo_erro = f"{modelo}: HTTP {r.status_code} {r.text[:200]}"
-            print("  [aviso] Gemini", ultimo_erro)
-            continue
-        r.raise_for_status()
-        partes = r.json()["candidates"][0]["content"]["parts"]
-        return _json_da_resposta("".join(pt.get("text", "") for pt in partes))
+        for tentativa in (1, 2):
+            try:
+                r = requests.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent",
+                    headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "content-type": "application/json"},
+                    json={"contents": [{"parts": [{"text": prompt}]}],
+                          "generationConfig": {"temperature": 0.4, "responseMimeType": "application/json"}},
+                    timeout=120)
+                if r.status_code >= 400:
+                    raise RuntimeError(f"HTTP {r.status_code} {r.text[:200]}")
+                partes = r.json()["candidates"][0]["content"]["parts"]
+                return _json_da_resposta("".join(pt.get("text", "") for pt in partes))
+            except Exception as ex:
+                ultimo_erro = f"{modelo} (tentativa {tentativa}): {ex}"
+                print("  [aviso] Gemini", ultimo_erro)
+                if "HTTP 4" in str(ex) and "HTTP 429" not in str(ex):
+                    break  # erro de pedido (modelo inexistente etc.): vai direto para o próximo modelo
     raise RuntimeError(ultimo_erro or "Gemini sem resposta")
 
 

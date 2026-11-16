@@ -67,6 +67,13 @@ def licenca_ok(nome, aceitar_nc=False):
     return False  # licença desconhecida ou "uso justo": não usa
 
 
+CONTEXTO_FUTEBOL = ["football", "futebol", "soccer", "futbol", "fútbol", "calcio", "fussball", "fußball",
+                    "voetbal", "jogador", "player", "footballer", "futebolista", "seleção", "selecao",
+                    "national team", "fc ", " cf", "clube", "club", "stadium", "estádio", "estadio",
+                    "brasileirão", "libertadores", "copa", "cup", "league", "liga", "match", "partida",
+                    "treino", "training", "coach", "treinador", "técnico", "uefa", "fifa", "cbf", "conmebol"]
+
+
 def _tem_palavras(texto, exigir):
     t = sem_acento(texto)
     return all(sem_acento(p) in t for p in exigir)
@@ -78,7 +85,16 @@ def _ano(t):
 
 
 # ---------------------------------------------------------------- Wikimedia
-def buscar_commons(busca, exigir, aceitar_nc=False, limite=40):
+def _confere(titulo, texto_completo, exigir, pessoa):
+    """Pessoa: o nome tem que estar no NOME da foto e a foto tem que ser de futebol.
+    Estádio/time: basta a palavra aparecer em qualquer parte da descrição."""
+    if not pessoa:
+        return _tem_palavras(texto_completo, exigir)
+    return _tem_palavras(titulo, exigir) and _tem_palavras(texto_completo, []) and \
+        any(c in sem_acento(" " + texto_completo + " ") for c in map(sem_acento, CONTEXTO_FUTEBOL))
+
+
+def buscar_commons(busca, exigir, aceitar_nc=False, limite=40, pessoa=False):
     dados = _get_json(COMMONS, {
         "action": "query", "format": "json", "generator": "search", "gsrnamespace": 6,
         "gsrsearch": f"{busca} filetype:bitmap", "gsrlimit": limite,
@@ -95,9 +111,9 @@ def buscar_commons(busca, exigir, aceitar_nc=False, limite=40):
         lic = meta.get("LicenseShortName") or meta.get("License", "")
         if not licenca_ok(lic, aceitar_nc):
             continue
-        texto = " ".join([p.get("title", ""), limpar_html(meta.get("ImageDescription")),
-                          limpar_html(meta.get("ObjectName")), meta.get("Categories", "")])
-        if not _tem_palavras(texto, exigir):
+        titulo = " ".join([p.get("title", ""), limpar_html(meta.get("ObjectName"))])
+        texto = " ".join([titulo, limpar_html(meta.get("ImageDescription")), meta.get("Categories", "")])
+        if not _confere(titulo, texto, exigir, pessoa):
             continue
         autor = limpar_html(meta.get("Artist")) or "autor desconhecido"
         autor = re.sub(r"\s*\(talk\)|\s*\(discussão\)", "", autor)[:70]
@@ -124,7 +140,7 @@ def _licencas_flickr(chave, aceitar_nc):
     return {i: l for i, l in _flickr_lic.items() if licenca_ok(l["name"], aceitar_nc)}
 
 
-def buscar_flickr(busca, exigir, aceitar_nc=False, limite=40):
+def buscar_flickr(busca, exigir, aceitar_nc=False, limite=40, pessoa=False):
     chave = os.environ.get("FLICKR_API_KEY")
     if not chave:
         return []
@@ -142,7 +158,7 @@ def buscar_flickr(busca, exigir, aceitar_nc=False, limite=40):
         if not url or not l:
             continue
         texto = " ".join([f.get("title", ""), (f.get("description") or {}).get("_content", ""), f.get("tags", "")])
-        if not _tem_palavras(texto, exigir):
+        if not _confere(f.get("title", ""), texto, exigir, pessoa):
             continue
         w, h = int(f.get("width_l") or f.get("width_c") or 0), int(f.get("height_l") or f.get("height_c") or 0)
         saida.append({
@@ -156,14 +172,14 @@ def buscar_flickr(busca, exigir, aceitar_nc=False, limite=40):
 
 # ---------------------------------------------------------------- escolha
 def buscas_para(pessoas, noticia, config):
-    """Lista de (busca, palavras obrigatórias), da mais específica para a mais genérica."""
+    """Lista de (busca, palavras obrigatórias, é_pessoa), da mais específica para a mais genérica."""
     lista = []
     for nome in pessoas:
         partes = nome.split()
         sobrenome = partes[-1] if partes else nome
-        lista.append((nome, [sobrenome] if len(partes) == 1 else [partes[0], sobrenome]))
+        lista.append((nome, [sobrenome] if len(partes) == 1 else [partes[0], sobrenome], True))
     for item in (config.get("fotos", {}).get("fotos_time", {}).get(noticia.get("termo", ""), [])):
-        lista.append((item["busca"], item.get("exigir", [])))
+        lista.append((item["busca"], item.get("exigir", []), False))
     return lista
 
 
@@ -174,13 +190,13 @@ def escolher_foto(pessoas, noticia, config, usadas=()):
     nc = cf.get("aceitar_nao_comercial", False)
     fontes = cf.get("fontes", ["commons", "flickr"])
     usadas = set(usadas)
-    for busca, exigir in buscas_para(pessoas, noticia, config):
+    for busca, exigir, pessoa in buscas_para(pessoas, noticia, config):
         achadas = []
         for fonte, func in (("commons", buscar_commons), ("flickr", buscar_flickr)):
             if fonte not in fontes:
                 continue
             try:
-                achadas += func(busca, exigir, nc)
+                achadas += func(busca, exigir, nc, pessoa=pessoa)
             except Exception as ex:
                 print(f"  [aviso] busca de foto em {fonte} falhou ({busca}): {ex}")
         if not achadas:
