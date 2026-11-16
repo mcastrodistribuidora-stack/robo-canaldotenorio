@@ -1,0 +1,57 @@
+name: Notícias de futebol
+
+on:
+  schedule:
+    # Horário de Brasília = UTC-3: roda de hora em hora, das 8h às 23h (16 vezes por dia, 1 notícia por vez)
+    - cron: "7 11-23,0-2 * * *"
+  workflow_dispatch:
+    inputs:
+      teste:
+        description: "Só gerar as artes (não posta). Baixe em Artifacts no fim da execução."
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: postagem
+  cancel-in-progress: false
+
+jobs:
+  postar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependências
+        run: |
+          pip install -r requirements.txt
+          for i in 1 2 3; do timeout 300 python -m playwright install --with-deps chromium && break || sleep 20; done
+          python -m playwright install chromium
+      - name: Postar
+        env:
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
+          META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FLICKR_API_KEY: ${{ secrets.FLICKR_API_KEY }}
+        run: |
+          if [ "${{ inputs.teste }}" = "true" ]; then python postar.py --teste; else python postar.py; fi
+      - name: Guardar artes do teste
+        if: ${{ inputs.teste }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: artes-teste
+          path: teste/
+      - name: Salvar o andamento
+        if: always()
+        run: |
+          git config user.name "robo-noticias"
+          git config user.email "robo-noticias@users.noreply.github.com"
+          git add estado.json || true
+          git diff --cached --quiet || git commit -m "Postagem $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
