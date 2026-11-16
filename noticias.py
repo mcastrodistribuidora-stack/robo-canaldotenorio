@@ -89,6 +89,19 @@ def parecida(titulo, titulos_recentes, limite=0.6):
     return False
 
 
+def fala_do_time(n, config):
+    """True se o TÍTULO cita o time ou um apelido dele (evita notícia que só menciona o clube no meio)."""
+    termos = config.get("palavras_time", {}).get(n["termo"], []) + [n["termo"]]
+    tit = unicodedata.normalize("NFKD", n["titulo"].lower())
+    tit = "".join(ch for ch in tit if not unicodedata.combining(ch))
+    for termo in termos:
+        k = unicodedata.normalize("NFKD", termo.lower())
+        k = "".join(ch for ch in k if not unicodedata.combining(ch))
+        if re.search(r"(?<![a-z0-9])" + re.escape(k) + r"(?![a-z0-9])", tit):
+            return True
+    return False
+
+
 def _nivel_fonte(n, config):
     """0 = ge/UOL, 1 = setoristas do clube, 2 = outras conhecidas, 3 = demais."""
     nome, site = n["fonte"].lower(), n.get("site", "")
@@ -112,6 +125,9 @@ def escolher(config, ja_postados, titulos_recentes=(), ultimo_time=None):
                 candidatos += buscar(termo, horas, site)
             except Exception as e:
                 print(f"  [aviso] não consegui buscar '{termo}' {site or ''}: {e}")
+    antes = len(candidatos)
+    candidatos = [n for n in candidatos if fala_do_time(n, config)]
+    print(f"  {len(candidatos)} de {antes} notícias encontradas falam mesmo dos times")
     if config.get("so_fontes_conhecidas"):
         candidatos = [n for n in candidatos if _nivel_fonte(n, config) < 3]
 

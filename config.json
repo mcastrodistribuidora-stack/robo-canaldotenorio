@@ -11,6 +11,26 @@
     "Vasco",
     "Palmeiras"
   ],
+  "palavras_time": {
+    "Vasco": [
+      "Vasco",
+      "Vasco da Gama",
+      "Cruz-Maltino",
+      "Cruzmaltino",
+      "Vascaíno",
+      "Vascaínos",
+      "São Januário"
+    ],
+    "Palmeiras": [
+      "Palmeiras",
+      "Verdão",
+      "Palmeirense",
+      "Palmeirenses",
+      "Alviverde",
+      "Allianz Parque",
+      "Abel Ferreira"
+    ]
+  },
   "busca_extra": [],
   "buscar_nos_sites": [
     "ge.globo.com",
