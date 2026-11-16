@@ -91,7 +91,9 @@ def parecida(titulo, titulos_recentes, limite=0.6):
 
 NAO_E_NOTICIA = re.compile(
     r"ao vivo|tempo real|minuto a minuto|siga o placar|siga placar|acompanhe o jogo|acompanhe a partida"
-    r"|placar ao vivo|lance a lance|onde assistir|que horas [ée]|qual canal|palpite|odds|aposta", re.I)
+    r"|placar ao vivo|lance a lance|onde assistir|que horas [ée]|qual canal|palpite|odds|aposta"
+    r"|voc[êe] escala|monte (o|a|seu|sua)|escale (o|seu)|quiz|teste seus|enquete|vote |vote:|vota[çc][ãa]o"
+    r"|cartola|fantasy|bol[ãa]o", re.I)
 SITES_BLOQUEADOS = ("placar.uol.com.br",)
 
 

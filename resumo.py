@@ -10,6 +10,7 @@ Escreve, com PALAVRAS PRÓPRIAS, o texto do post a partir das manchetes da notí
 import json
 import os
 import re
+import time
 
 SELOS = ["URGENTE", "OFICIAL", "MERCADO DA BOLA", "PRÉ-JOGO", "PÓS-JOGO", "DESFALQUE", "DECLAROU",
          "BASTIDORES", "TORCIDA", "BASE", "NOTÍCIA"]
@@ -144,7 +145,7 @@ def _chamar_gemini(prompt, config):
     modelos = config.get("resumo_ia", {}).get("modelos_gemini", GEMINI_MODELOS)
     ultimo_erro = None
     for modelo in modelos:
-        for tentativa in (1, 2):
+        for tentativa in (1, 2, 3):
             try:
                 r = requests.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent",
@@ -157,10 +158,12 @@ def _chamar_gemini(prompt, config):
                 partes = r.json()["candidates"][0]["content"]["parts"]
                 return _json_da_resposta("".join(pt.get("text", "") for pt in partes))
             except Exception as ex:
-                ultimo_erro = f"{modelo} (tentativa {tentativa}): {ex}"
+                curto = str(ex).split("{")[0].strip()
+                ultimo_erro = f"{modelo} (tentativa {tentativa}): {curto}"
                 print("  [aviso] Gemini", ultimo_erro)
                 if "HTTP 4" in str(ex) and "HTTP 429" not in str(ex):
                     break  # erro de pedido (modelo inexistente etc.): vai direto para o próximo modelo
+                time.sleep(20 * tentativa)  # Google ocupado (503) ou cota (429): espera e tenta de novo
     raise RuntimeError(ultimo_erro or "Gemini sem resposta")
 
 
