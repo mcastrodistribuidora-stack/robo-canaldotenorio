@@ -1,7 +1,7 @@
 """
 Escreve, com PALAVRAS PRÓPRIAS, o texto do post a partir das manchetes da notícia.
 
-- Com o secret ANTHROPIC_API_KEY: usa a IA (Claude) para criar título da arte, linha fina,
+- Com o secret GEMINI_API_KEY (Google, plano GRÁTIS) ou ANTHROPIC_API_KEY (Claude, pago): usa a IA para criar título da arte, linha fina,
   a notícia escrita para a legenda (resumo), uma pergunta para o torcedor, o selo e os nomes
   das pessoas (usados para buscar a foto).
   Ela só pode usar fatos que estão nas manchetes. Não inventa nada.
@@ -132,12 +132,42 @@ def plano_b(n, config):
     }
 
 
+GEMINI_MODELOS = ["gemini-flash-latest", "gemini-flash-lite-latest"]  # se um falhar/estourar a cota, tenta o outro
+
+
+def _json_da_resposta(texto):
+    return json.loads(texto[texto.index("{"): texto.rindex("}") + 1])
+
+
+def _chamar_gemini(prompt, config):
+    import requests
+    modelos = config.get("resumo_ia", {}).get("modelos_gemini", GEMINI_MODELOS)
+    ultimo_erro = None
+    for modelo in modelos:
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent",
+            headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "content-type": "application/json"},
+            json={"contents": [{"parts": [{"text": prompt}]}],
+                  "generationConfig": {"temperature": 0.4, "responseMimeType": "application/json"}},
+            timeout=60)
+        if r.status_code in (404, 429, 500, 503):
+            ultimo_erro = f"{modelo}: HTTP {r.status_code} {r.text[:200]}"
+            print("  [aviso] Gemini", ultimo_erro)
+            continue
+        r.raise_for_status()
+        partes = r.json()["candidates"][0]["content"]["parts"]
+        return _json_da_resposta("".join(pt.get("text", "") for pt in partes))
+    raise RuntimeError(ultimo_erro or "Gemini sem resposta")
+
+
 def _chamar_ia(n, config):
     import requests
     outras = "\n".join(f"- {o}" for o in n.get("relacionadas", [])[:12]) or "- (nenhuma)"
     prompt = PROMPT.format(termo=n.get("termo", ""), fonte=n.get("fonte", ""), titulo=n["titulo"],
                            outras=outras, selos=", ".join(SELOS), selos_ajuda=SELOS_AJUDA,
                            torcedor=torcedor(n, config))
+    if os.environ.get("GEMINI_API_KEY"):
+        return _chamar_gemini(prompt, config)
     r = requests.post("https://api.anthropic.com/v1/messages", timeout=60, headers={
         "x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01",
         "content-type": "application/json"}, json={
@@ -145,12 +175,13 @@ def _chamar_ia(n, config):
         "max_tokens": 1200, "messages": [{"role": "user", "content": prompt}]})
     r.raise_for_status()
     texto = "".join(b.get("text", "") for b in r.json().get("content", []))
-    return json.loads(texto[texto.index("{"): texto.rindex("}") + 1])
+    return _json_da_resposta(texto)
 
 
 def gerar(n, config):
     base = plano_b(n, config)
-    if not os.environ.get("ANTHROPIC_API_KEY") or not config.get("resumo_ia", {}).get("usar", True):
+    tem_chave = os.environ.get("GEMINI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+    if not tem_chave or not config.get("resumo_ia", {}).get("usar", True):
         return base
     try:
         d = _chamar_ia(n, config)
