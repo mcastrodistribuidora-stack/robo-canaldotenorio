@@ -54,7 +54,8 @@ def _selo_por_palavras(t):
         ("MERCADO DA BOLA", r"contrat|refor[çc]o|negoci|proposta|acerta|sondag|empr[ée]stimo|renova|venda|saída|deixa o"),
         ("OFICIAL", r"\boficial|anuncia|oficializa|confirma"),
         ("PÓS-JOGO", r"\bvence|empata|perde para|derrota|vit[óo]ria|goleia|\d+\s*(x|a)\s*\d+|atua[çc][ãa]o|notas"),
-        ("PRÉ-JOGO", r"escala[çc][ãa]o|relacionad|enfrenta|encara|visita|recebe|pr[óo]ximo jogo|onde assistir|provável"),
+        ("PRÉ-JOGO", r"escala[çc][ãa]o|relacionad|enfrenta|encara|visita|recebe|pr[óo]ximo jogo|onde assistir|provável"
+                     r"|[a-zà-ú]\s+x\s+[a-zà-ú]|duelo|cl[áa]ssico|decis[ãa]o contra"),
         ("BASE", r"\bsub-?\d\d|\bbase\b|categorias de base"),
         ("TORCIDA", r"torcida|torcedor|ingresso|protesto|p[úu]blico"),
         ("BASTIDORES", r"\bsaf\b|diretoria|presidente|eleição|d[íi]vida|financ|balan[çc]o|conselho"),
@@ -109,12 +110,21 @@ def pergunta_padrao(selo, n, config):
     return PERGUNTAS.get(selo, "E aí, {t}, qual é a sua opinião? Comenta aí 👇").format(t=torcedor(n, config))
 
 
+def limpar_titulo(t):
+    """Tira pedaços de site do título: ' | Brasileirão', ' - ge', 'VÍDEO:' etc."""
+    t = re.split(r"\s+[|•]\s+", t)[0]
+    t = re.sub(r"^(v[íi]deo|veja|assista|ao vivo|urgente)\s*[:|-]\s*", "", t, flags=re.I)
+    t = re.sub(r"\s+[-–]\s+[^-–]{1,25}$", "", t)  # " - ge", " - Lance!"
+    return t.strip(" -–:")
+
+
 def plano_b(n, config):
     selo = _selo_por_palavras(n["titulo"])
+    titulo = limpar_titulo(n["titulo"])
     return {
-        "titulo_arte": n["titulo"],
+        "titulo_arte": titulo,
         "linha_fina": "",
-        "texto": n["titulo"] + ".",
+        "texto": titulo + ".",
         "pergunta": pergunta_padrao(selo, n, config),
         "selo": selo,
         "pessoas": pessoas_por_regex(n["titulo"], config.get("times", []) + [n.get("termo", "")]),
