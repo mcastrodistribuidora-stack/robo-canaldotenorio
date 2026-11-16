@@ -20,7 +20,10 @@ Opcionais: ANTHROPIC_API_KEY (resumo com IA), FLICKR_API_KEY (busca fotos també
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -65,6 +68,44 @@ def legenda(n, info, foto=None):
     return "\n\n".join(partes)
 
 
+def url_github(caminho):
+    """Publica a imagem num ramo separado do repositório ('midia', sempre só com a imagem atual,
+    para o repositório não crescer) e devolve o link público raw.githubusercontent.com."""
+    import requests
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if not repo:
+        raise RuntimeError("sem GITHUB_REPOSITORY: a hospedagem pelo GitHub só funciona dentro do GitHub Actions")
+    remoto = os.environ.get("MIDIA_REMOTO", f"https://github.com/{repo}.git")
+    cabecalho = subprocess.run(["git", "config", "--get", "http.https://github.com/.extraheader"],
+                               cwd=PASTA, capture_output=True, text=True).stdout.strip()
+    nome = f"{int(time.time())}_{Path(caminho).name}"
+    pasta = Path(tempfile.mkdtemp())
+    shutil.copy(caminho, pasta / nome)
+
+    def git(*args):
+        extra = ["-c", f"http.https://github.com/.extraheader={cabecalho}"] if cabecalho else []
+        subprocess.run(["git", *extra, *args], cwd=pasta, check=True, capture_output=True, text=True)
+
+    git("init", "-q")
+    git("checkout", "-q", "-b", "midia")
+    git("config", "user.name", "robo-noticias")
+    git("config", "user.email", "robo-noticias@users.noreply.github.com")
+    git("add", nome)
+    git("commit", "-q", "-m", "imagem do post")
+    git("push", "-q", "-f", remoto, "midia")
+    shutil.rmtree(pasta, ignore_errors=True)
+    url = f"https://raw.githubusercontent.com/{repo}/midia/{nome}"
+    for _ in range(12):  # espera o link ficar no ar (alguns segundos)
+        try:
+            if requests.head(url, timeout=15).status_code == 200:
+                break
+        except Exception:
+            pass
+        time.sleep(5)
+    print("   imagem hospedada:", url)
+    return url
+
+
 class Meta:
     def __init__(self):
         import requests
@@ -84,7 +125,17 @@ class Meta:
         return d
 
     def url_publica(self, caminho):
-        """Sobe a foto NÃO publicada na página do Facebook só para ter um link público para o Instagram."""
+        """Link público da imagem para o Instagram buscar.
+        1º tenta pela Página (foto NÃO publicada); se o app não tiver essa permissão, hospeda no GitHub."""
+        if not getattr(self, "_pagina_recusou", False):
+            try:
+                return self._url_pela_pagina(caminho)
+            except Exception as ex:
+                print("   [aviso] a Página não aceitou hospedar a imagem; usando o GitHub:", str(ex)[:120])
+                self._pagina_recusou = True
+        return url_github(caminho)
+
+    def _url_pela_pagina(self, caminho):
         with open(caminho, "rb") as f:
             r = self.rq.post(f"{self.base}/{self.page}/photos", data={"published": "false", "access_token": self.token},
                              files={"source": (Path(caminho).name, f, "image/jpeg")}, timeout=120)
