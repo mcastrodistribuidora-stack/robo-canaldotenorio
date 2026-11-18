@@ -1,147 +1,145 @@
-"""Designs das artes de notícia (HTML -> imagem pelo artes.py). Cores e nome vêm do config.json."""
+"""Arte de notícia limpa: fundo escuro, manchete grande, crédito discreto. Cores e nome no config.json."""
 import html
-from pathlib import Path
 
 e = html.escape
+MESES = "JAN FEV MAR ABR MAI JUN JUL AGO SET OUT NOV DEZ".split()
 
 FIT = """<script>
 document.fonts.ready.then(() => {
   window.problemas = [];
   document.querySelectorAll('[data-fit]').forEach(el => {
-    let t = +el.dataset.fit, min = +(el.dataset.min || 30), maxH = +el.dataset.maxh;
+    let t = +el.dataset.fit, min = +(el.dataset.min || 40), maxH = +el.dataset.maxh;
     el.style.fontSize = t + 'px';
     while (t > min && el.scrollHeight > maxH) { t -= 2; el.style.fontSize = t + 'px'; }
-    if (el.scrollHeight > maxH) window.problemas.push('texto grande demais');
+    if (el.scrollHeight > maxH) window.problemas.push('manchete grande demais');
   });
   window.pronto = true;
 });
 </script>"""
 
 
-PASTA = Path(__file__).resolve().parent
-REDES = [("youtube", "YouTube"), ("instagram", "Instagram"), ("tiktok", "TikTok")]
-
-
-def _chip(c):
-    """Selo duplo: nome do time + assunto (ex.: VASCO | MERCADO DA BOLA)."""
-    time_ = c.get("termo", "")
-    selo = c.get("selo", "Notícia")
-    tam = 24 if len(time_) + len(selo) <= 22 else 20
-    return (f'<div class="chip" style="font-size:{tam}px">'
-            f'<span class="chip-time">{e(time_)}</span><span class="chip-selo">{e(selo)}</span></div>')
-
-
-def _siga(c):
-    """Bloco pequeno 'SIGA' + ícones das redes + @. Ícones oficiais: coloque PNGs em icones/ (ver LEIA-ME)."""
-    itens = []
-    for chave, nome in REDES:
-        if chave not in c.get("redes", {"youtube": 1, "instagram": 1, "tiktok": 1}):
-            continue
-        arq = PASTA / "icones" / f"{chave}.png"
-        if arq.exists():
-            itens.append(f'<img class="ico" src="{arq.as_uri()}" alt="{nome}">')
-        else:
-            itens.append(f'<span class="rede">{nome}</span>')
-    return (f'<div class="siga"><div class="siga-linha"><span class="siga-txt">SIGA</span>{"".join(itens)}</div>'
-            f'<div class="arroba">{e(c["arroba"])}</div></div>')
-
-
-CSS_COMUM = """
-.chip{{display:flex;font-family:P;font-weight:700;letter-spacing:3px;text-transform:uppercase;white-space:nowrap}}
-.chip span{{padding:10px 18px}}
-.chip-time{{background:#fff;color:#0B0B0B}}
-.chip-selo{{background:{detalhe};color:#fff}}
-.siga{{text-align:right;white-space:nowrap}}
-.siga-linha{{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-bottom:8px}}
-.siga-txt{{font:700 18px P;letter-spacing:3px;opacity:.85}}
-.ico{{height:30px;width:auto;display:block}}
-.rede{{font:700 15px P;letter-spacing:1px;border:2px solid rgba(255,255,255,.55);border-radius:6px;padding:3px 8px;opacity:.9}}
-.arroba{{font:800 32px D}}
-"""
+CRUZ = "../assets/cruz.png"
 
 
 def _pagina(c, altura):
     cor = c["cores"]
     story = altura == 1920
-    topo_titulo = 330 if story else 250
-    alt_titulo = 900 if story else 700
+    q = c.get("quando")
+    data = f"{q.day:02d} {MESES[q.month - 1]} {q.year}" if q else ""
+    mv = 150 if story else 90
+    foto = c.get("foto")
+    if foto:  # foto em cima, manchete embaixo
+        alt_foto = 1060 if story else 700
+        bloco = f"""<div class="foto" style="height:{alt_foto}px;background-image:url('{foto}')"></div>
+<div class="sombra" style="top:{alt_foto - 240}px"></div>
+<div class="credito" style="top:{alt_foto - 34}px">{e(c.get('credito_foto', ''))}</div>"""
+        meio = f'''<div class="meio comfoto" style="padding-top:{alt_foto - mv - 10}px"><div class="traco"></div>
+  <div class="titulo" data-fit="{88 if story else 72}" data-min="40" data-maxh="{520 if story else 300}">{e(c['titulo'])}</div></div>'''
+        marca = ""
+    else:
+        bloco = ""
+        meio = f'''<div class="meio"><div class="traco"></div>
+  <div class="titulo" data-fit="{104 if story else 92}" data-min="44" data-maxh="{1100 if story else 760}">{e(c['titulo'])}</div></div>'''
+        marca = '<img class="marca" src="' + CRUZ + '">'
     return f"""<!doctype html><html><head><meta charset="utf-8"><style>
-@font-face{{font-family:D;src:url("../fontes/InterDisplay-Black.otf");font-weight:900}}
 @font-face{{font-family:D;src:url("../fontes/InterDisplay-ExtraBold.otf");font-weight:800}}
+@font-face{{font-family:D;src:url("../fontes/InterDisplay-Black.otf");font-weight:900}}
+@font-face{{font-family:P;src:url("../fontes/Poppins-Regular.ttf");font-weight:400}}
 @font-face{{font-family:P;src:url("../fontes/Poppins-Medium.ttf");font-weight:500}}
 @font-face{{font-family:P;src:url("../fontes/Poppins-Bold.ttf");font-weight:700}}
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{width:1080px;height:{altura}px;overflow:hidden;background:{cor['fundo']};color:{cor['texto']};font-family:P,sans-serif}}
-.listra{{position:absolute;left:0;top:0;bottom:0;width:22px;background:{cor['detalhe']}}}
-.diag{{position:absolute;right:-220px;top:-160px;width:720px;height:720px;border:70px solid {cor['detalhe']};opacity:.16;transform:rotate(45deg)}}
-.topo{{position:absolute;left:80px;right:70px;top:{110 if story else 70}px;display:flex;justify-content:space-between;align-items:center}}
-.marca{{font:900 34px D;letter-spacing:1px;text-transform:uppercase}}
-{CSS_COMUM.format(detalhe=cor['detalhe'])}
-.titulo{{position:absolute;left:80px;right:80px;top:{topo_titulo}px;font-family:D;font-weight:900;line-height:1.04;letter-spacing:-1.5px;color:{cor['destaque']}}}
-.rodape{{position:absolute;left:80px;right:80px;bottom:{150 if story else 70}px;display:flex;justify-content:space-between;align-items:flex-end;
-        border-top:3px solid {cor['detalhe']};padding-top:26px}}
-.fonte{{font:500 28px P;opacity:.85}}
-.fonte b{{font-weight:700;opacity:1}}
+body{{position:relative;width:1080px;height:{altura}px;overflow:hidden;background:{cor['fundo']};color:{cor['texto']};font-family:P,sans-serif;
+     display:flex;flex-direction:column;padding:{mv}px 90px}}
+.foto{{position:absolute;left:0;top:0;width:1080px;background-size:cover;background-position:center 30%}}
+.sombra{{position:absolute;left:0;right:0;height:250px;background:linear-gradient(rgba(10,10,10,0),{cor['fundo']})}}
+.foto:before{{content:"";position:absolute;left:0;right:0;top:0;height:220px;background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,0))}}
+.credito{{position:absolute;right:30px;font:400 17px P;color:rgba(255,255,255,.75);text-shadow:0 1px 3px #000;max-width:760px;text-align:right;
+         white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.marca{{position:absolute;right:-150px;bottom:-150px;width:620px;opacity:.07}}
+.topo,.meio,.base{{position:relative}}
+.topo{{display:flex;justify-content:space-between;align-items:center;font:700 26px P;letter-spacing:5px;text-transform:uppercase;text-shadow:0 1px 8px rgba(0,0,0,.6)}}
+.topo .nome{{display:flex;align-items:center;gap:16px}} .topo img{{width:40px;height:40px}}
+.topo span{{color:{cor['suave']};font-weight:500;letter-spacing:3px}}
+.comfoto ~ .base, .comfoto{{}} .foto ~ .topo span{{color:#fff}}
+.meio{{flex:1;display:flex;flex-direction:column;justify-content:center;gap:44px}}
+.meio.comfoto{{justify-content:flex-start;gap:30px}}
+.traco{{width:72px;height:8px;background:{cor['detalhe']}}}
+.titulo{{font-family:D;font-weight:800;line-height:1.08;letter-spacing:-1.5px;text-wrap:balance}}
+.base{{display:flex;justify-content:space-between;align-items:center;font:400 26px P;color:{cor['suave']};
+      border-top:1px solid rgba(255,255,255,.18);padding-top:30px}}
+.base b{{color:{cor['texto']};font-weight:700}}
+.canal{{text-align:right;line-height:1.25}} .canal small{{display:block;font-size:19px;letter-spacing:1px}}
 </style></head><body>
-<div class="listra"></div><div class="diag"></div>
-<div class="topo"><div class="marca">{e(c['nome_pagina'])}</div>{_chip(c)}</div>
-<div style="position:absolute;left:80px;right:80px;top:{topo_titulo}px">
-<div class="titulo" style="position:static" data-fit="{110 if story else 96}" data-min="40" data-maxh="{alt_titulo - (150 if c.get('resumo_curto') else 0)}">{e(c['titulo'])}</div>
-{f'<div style="font:500 34px/1.35 P;opacity:.9;margin-top:30px">{e(c["resumo_curto"])}</div>' if c.get('resumo_curto') else ''}
-</div>
-<div class="rodape"><div class="fonte">Fonte: <b>{e(c['fonte'] or 'imprensa')}</b>{(' · ' + e(c['site'])) if c.get('site') else ''}</div>{_siga(c)}</div>
-<style>.feed-aviso{{position:absolute;left:0;right:0;bottom:70px;text-align:center;font:700 26px P;letter-spacing:3px;color:#fff;opacity:.9}}</style>
-{'<div class="feed-aviso">LEIA A NOTÍCIA COMPLETA NO FEED ↑</div>' if story else ''}
+{bloco}{marca}
+<div class="topo"><div class="nome"><img src="{CRUZ}">{e(c['nome_pagina'])}</div><span>{data}</span></div>
+{meio}
+<div class="base"><div>Fonte: <b>{e(c['fonte'])}</b></div><div class="canal"><b>{e(c['arroba'])}</b><small>{e(c.get('redes',''))}</small></div></div>
 {FIT}</body></html>"""
 
 
-DESIGNS = {
-    "noticia": lambda c: _pagina(c, 1350),
-    "story": lambda c: _pagina(c, 1920),
-}
-
-
-def _pagina_foto(c, altura):
-    """Arte com foto livre (Wikimedia/Flickr) ao fundo, título, linha fina e créditos."""
+def _estat(c, altura):
     cor = c["cores"]
     story = altura == 1920
-    foto = c.get("foto_arquivo", "")
-    base = 230 if story else 90
+    if c["tipo"] == "comparativo":
+        n = len(c["colunas"])
+        maior = max(col["grande"] for col in c["colunas"])
+        miolo = '<div class="cols">' + "".join(
+            f'''<div class="col{' top' if col['grande'] == maior else ''}"><div class="ano">{col['ano']}</div>
+            <div class="num">{col['grande']}{'%' if col.get('pct') else ''}</div><div class="rot">{e(col['rotulo'])}</div>
+            <div class="lin">{''.join(f'<p>{e(str(l))}</p>' for l in col['linhas'])}</div></div>''' for col in c["colunas"]) + "</div>"
+    else:
+        maior = max(i["valor"] for i in c["itens"]) or 1
+        miolo = '<div class="rank">' + "".join(
+            f'''<div class="item"><div class="pos">{k + 1}</div><div class="info"><div class="nome">{e(i['nome'])}<span>{e(i['extra'])}</span></div>
+            <div class="barra"><i style="width:{max(6, 100 * i['valor'] / maior):.0f}%"></i></div></div>
+            <div class="val">{i['valor']}<small>{e(c['unidade'])}</small></div></div>''' for k, i in enumerate(c["itens"])) + "</div>"
     return f"""<!doctype html><html><head><meta charset="utf-8"><style>
-@font-face{{font-family:D;src:url("../fontes/InterDisplay-Black.otf");font-weight:900}}
 @font-face{{font-family:D;src:url("../fontes/InterDisplay-ExtraBold.otf");font-weight:800}}
+@font-face{{font-family:D;src:url("../fontes/InterDisplay-Black.otf");font-weight:900}}
+@font-face{{font-family:P;src:url("../fontes/Poppins-Regular.ttf");font-weight:400}}
 @font-face{{font-family:P;src:url("../fontes/Poppins-Medium.ttf");font-weight:500}}
 @font-face{{font-family:P;src:url("../fontes/Poppins-Bold.ttf");font-weight:700}}
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{width:1080px;height:{altura}px;overflow:hidden;background:{cor['fundo']};color:{cor['texto']};font-family:P,sans-serif;position:relative}}
-.foto{{position:absolute;left:0;top:0;width:100%;height:{1450 if story else 960}px;object-fit:cover;object-position:center {c.get('foto_foco', '22%')}}}
-.sombra{{position:absolute;inset:0;background:
-  linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,0) 16%),
-  linear-gradient(180deg,rgba(0,0,0,0) {48 if story else 38}%,{cor['fundo']} {72 if story else 70}%)}}
-.listra{{position:absolute;left:0;top:0;bottom:0;width:18px;background:{cor['detalhe']}}}
-.topo{{position:absolute;left:70px;right:60px;top:{110 if story else 56}px;display:flex;justify-content:space-between;align-items:center}}
-.marca{{font:900 32px D;letter-spacing:1px;text-transform:uppercase;text-shadow:0 2px 12px rgba(0,0,0,.6)}}
-{CSS_COMUM.format(detalhe=cor['detalhe'])}
-.bloco{{position:absolute;left:70px;right:70px;bottom:{base}px}}
-.time{{display:inline-block;font:700 28px P;letter-spacing:3px;text-transform:uppercase;color:#fff;border-left:8px solid {cor['detalhe']};padding-left:16px;margin-bottom:22px}}
-.titulo{{font-family:D;font-weight:900;line-height:1.02;letter-spacing:-1.5px;color:{cor['destaque']};max-height:{560 if story else 330}px}}
-.fina{{font:500 33px/1.35 P;margin-top:24px;opacity:.92;max-height:{230 if story else 140}px}}
-.rodape{{display:flex;justify-content:space-between;align-items:flex-end;border-top:3px solid {cor['detalhe']};padding-top:20px;margin-top:34px;gap:30px}}
-.creditos{{font:500 21px/1.45 P;opacity:.8}}
-.creditos b{{font-weight:700}}
+body{{width:1080px;height:{altura}px;overflow:hidden;background:{cor['fundo']};color:{cor['texto']};font-family:P,sans-serif;
+     display:flex;flex-direction:column;padding:{150 if story else 80}px 80px}}
+.topo{{display:flex;justify-content:space-between;align-items:center;font:700 26px P;letter-spacing:5px;text-transform:uppercase}}
+.topo span{{color:{cor['detalhe']};letter-spacing:4px}}
+.topo .nome{{display:flex;align-items:center;gap:16px}} .topo img{{width:40px;height:40px}}
+body{{position:relative}} .marca{{position:absolute;right:-170px;top:-170px;width:560px;opacity:.06}}
+.topo,h1,.meio,.pergunta,.base{{position:relative}}
+h1{{margin-top:{90 if story else 56}px;font:800 66px/1.06 D;letter-spacing:-1px;text-wrap:balance}}
+.meio{{flex:1;display:flex;flex-direction:column;justify-content:center}}
+.cols{{display:grid;grid-template-columns:repeat({len(c.get('colunas', [])) or 1},1fr);gap:22px}}
+.col{{border:1px solid rgba(255,255,255,.16);padding:34px 26px;display:flex;flex-direction:column;gap:6px}}
+.col.top{{border-color:{cor['detalhe']};background:rgba(210,31,43,.08)}}
+.ano{{font:700 26px P;color:{cor['suave']};letter-spacing:3px}}
+.num{{font:900 {150 if story else 128}px/1 D;letter-spacing:-4px;margin-top:10px}}
+.rot{{font:500 24px P;color:{cor['suave']};text-transform:uppercase;letter-spacing:2px}}
+.lin{{margin-top:22px;border-top:1px solid rgba(255,255,255,.12);padding-top:18px;font:400 25px/1.6 P;color:#d6d6d6}}
+.rank{{display:flex;flex-direction:column;gap:{34 if story else 26}px}}
+.item{{display:grid;grid-template-columns:56px 1fr 150px;align-items:center;gap:20px}}
+.pos{{font:900 44px D;color:{cor['suave']}}}
+.item:first-child .pos{{color:{cor['detalhe']}}}
+.nome{{font:700 34px P;display:flex;justify-content:space-between;align-items:baseline}}
+.nome span{{font:400 22px P;color:{cor['suave']}}}
+.barra{{height:12px;background:rgba(255,255,255,.1);margin-top:12px}} .barra i{{display:block;height:100%;background:#fff}}
+.item:first-child .barra i{{background:{cor['detalhe']}}}
+.val{{font:900 62px/1 D;text-align:right}} .val small{{display:block;font:500 18px P;color:{cor['suave']};letter-spacing:1px;margin-top:6px}}
+.pergunta{{margin-top:{70 if story else 44}px;font:800 44px/1.15 D;display:flex;gap:22px;align-items:flex-start}}
+.pergunta:before{{content:"";flex:none;width:10px;align-self:stretch;background:{cor['detalhe']}}}
+.base{{margin-top:{60 if story else 40}px;display:flex;justify-content:space-between;align-items:center;font:400 24px P;color:{cor['suave']};
+      border-top:1px solid rgba(255,255,255,.18);padding-top:26px}}
+.base b{{color:{cor['texto']};font-weight:700}} .canal{{text-align:right;line-height:1.25}} .canal small{{display:block;font-size:19px;letter-spacing:1px}}
 </style></head><body>
-<img class="foto" src="{e(foto)}">
-<div class="sombra"></div><div class="listra"></div>
-<div class="topo"><div class="marca">{e(c['nome_pagina'])}</div>{_chip(c)}</div>
-<div class="bloco">
-  <div class="titulo" data-fit="{104 if story else 84}" data-min="44" data-maxh="{560 if story else 330}">{e(c['titulo'])}</div>
-  {f'<div class="fina" data-fit="34" data-min="24" data-maxh="{230 if story else 140}">{e(c["resumo_curto"])}</div>' if c.get('resumo_curto') else ''}
-  <div class="rodape"><div class="creditos">Fonte: <b>{e(c['fonte'] or 'imprensa')}</b>{(' · ' + e(c['site'])) if c.get('site') else ''}<br>Foto: <b>{e(c.get('foto_autor', ''))}</b> · {e(c.get('foto_licenca', ''))}</div>{_siga(c)}</div>
-</div>
-<style>.feed-aviso{{position:absolute;left:0;right:0;bottom:70px;text-align:center;font:700 26px P;letter-spacing:3px;color:#fff;opacity:.9}}</style>
-{'<div class="feed-aviso">LEIA A NOTÍCIA COMPLETA NO FEED ↑</div>' if story else ''}
-{FIT}</body></html>"""
+<img class="marca" src="{CRUZ}">
+<div class="topo"><div class="nome"><img src="{CRUZ}">{e(c['nome_pagina'])}</div><span>{e(c['selo'])}</span></div>
+<h1>{e(c['titulo'])}</h1>
+<div class="meio">{miolo}</div>
+<div class="pergunta">{e(c['pergunta'])}</div>
+<div class="base"><div>Dados: <b>NETVASCO</b></div><div class="canal"><b>{e(c['arroba'])}</b><small>{e(c.get('redes',''))}</small></div></div>
+<script>document.fonts.ready.then(()=>{{window.problemas=document.body.scrollHeight>{altura}+2?['estourou']:[];window.pronto=true}})</script>
+</body></html>"""
 
 
-DESIGNS["noticia_foto"] = lambda c: _pagina_foto(c, 1350)
-DESIGNS["story_foto"] = lambda c: _pagina_foto(c, 1920)
+DESIGNS = {"noticia": lambda c: _pagina(c, 1350), "story": lambda c: _pagina(c, 1920),
+           "estatistica": lambda c: _estat(c, 1350), "estatistica_story": lambda c: _estat(c, 1920)}

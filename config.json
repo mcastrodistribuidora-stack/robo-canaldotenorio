@@ -1,133 +1,17 @@
 {
   "nome_pagina": "CANAL DO TENÓRIO",
-  "nome_legenda": "Canal do Tenório",
   "arroba": "@canaldotenorio",
-  "redes": {
-    "instagram": "@canaldotenorio",
-    "youtube": "@canaldotenorio",
-    "tiktok": "@canaldotenorio"
-  },
-  "times": [
-    "Vasco",
-    "Palmeiras"
-  ],
-  "palavras_time": {
-    "Vasco": [
-      "Vasco",
-      "Vasco da Gama",
-      "Cruz-Maltino",
-      "Cruzmaltino",
-      "Vascaíno",
-      "Vascaínos",
-      "São Januário"
-    ],
-    "Palmeiras": [
-      "Palmeiras",
-      "Verdão",
-      "Palmeirense",
-      "Palmeirenses",
-      "Alviverde",
-      "Allianz Parque",
-      "Abel Ferreira"
-    ]
-  },
-  "busca_extra": [],
-  "buscar_nos_sites": [
-    "ge.globo.com",
-    "uol.com.br"
-  ],
-  "fontes_prioritarias": [
-    "ge",
-    "UOL"
-  ],
-  "fontes_time": {
-    "Vasco": [
-      "NETVASCO",
-      "SuperVasco",
-      "Vasco Notícias",
-      "O Dia",
-      "Extra",
-      "Jornal dos Sports"
-    ],
-    "Palmeiras": [
-      "Nosso Palestra",
-      "Verdazzo",
-      "Palmeiras Online",
-      "Gazeta Esportiva",
-      "Palmeiras Todo Dia"
-    ]
-  },
-  "fontes_preferidas": [
-    "Lance!",
-    "ESPN",
-    "CNN Brasil",
-    "Terra",
-    "O Globo",
-    "Placar",
-    "Estadão",
-    "Folha",
-    "Trivela"
-  ],
-  "so_fontes_conhecidas": false,
+  "redes": "YouTube · Instagram · TikTok",
+  "buscas_google": ["Vasco", "\"Vasco da Gama\"", "vascaíno OR vascaínos", "\"São Januário\""],
+  "feeds_diretos": {"NETVASCO": "https://www.netvasco.com.br/news/rss.xml"},
+  "ignorar_se_tiver": ["vasco rossi", "vasco palmeirim", "vasco seabra", "vasco matos", "vasco botelho"],
   "max_por_execucao": 1,
   "horas_maximas_da_noticia": 12,
   "postar_story": true,
-  "cores": {
-    "fundo": "#0B0B0B",
-    "destaque": "#FFFFFF",
-    "detalhe": "#C8102E",
-    "texto": "#FFFFFF"
-  },
-  "hashtags": [
-    "#futebol",
-    "#futebolbrasileiro",
-    "#brasileirao",
-    "#canaldotenorio"
-  ],
-  "resumo_ia": {
-    "usar": true,
-    "modelo": "claude-haiku-5-5"
-  },
-  "fotos": {
-    "usar": true,
-    "fontes": [
-      "commons",
-      "flickr"
-    ],
-    "aceitar_nao_comercial": false,
-    "fotos_time": {
-      "Vasco": [
-        {
-          "busca": "Estádio São Januário",
-          "exigir": [
-            "januario"
-          ]
-        },
-        {
-          "busca": "CR Vasco da Gama football",
-          "exigir": [
-            "vasco"
-          ]
-        }
-      ],
-      "Palmeiras": [
-        {
-          "busca": "Allianz Parque",
-          "exigir": [
-            "allianz"
-          ]
-        },
-        {
-          "busca": "Sociedade Esportiva Palmeiras football",
-          "exigir": [
-            "palmeiras"
-          ]
-        }
-      ]
-    }
-  },
-  "torcedor": {
-    "Vasco": "vascaíno",
-    "Palmeiras": "palmeirense"
-  }
+  "usar_fotos": true,
+  "horas_estatistica": [12, 19],
+  "temporadas_estatistica": [2024, 2025, 2026],
+  "dias_entre_repeticoes": 10,
+  "cores": {"fundo": "#0A0A0A", "texto": "#FFFFFF", "suave": "#9A9A9A", "detalhe": "#D21F2B"},
+  "hashtags": ["#Vasco", "#VascoDaGama", "#Vascaínos", "#GigantedaColina", "#futebol"]
 }

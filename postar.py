@@ -5,105 +5,89 @@ Robô de notícias de futebol: só Instagram.
 A cada execução:
   1. busca notícias recentes dos times do config.json (Google Notícias);
   2. pula as que já foram postadas (estado.json);
-  3. escreve título/linha fina/legenda com palavras próprias (resumo.py; IA opcional);
-  4. procura uma FOTO REAL COM LICENÇA LIVRE do jogador/estádio (fotos.py);
-  5. gera a arte com a foto (ou só com texto, se não achar foto) e o story;
-  6. publica no Instagram com legenda e créditos do veículo e do fotógrafo.
+  3. gera a arte (1080x1350) e, se ligado, o story (1080x1920);
+  4. publica no Instagram com legenda e crédito do veículo.
 
 Uso:
   python postar.py            -> posta
   python postar.py --teste    -> só gera as artes em teste/, sem postar
 Secrets: META_PAGE_ID, META_IG_USER_ID, META_PAGE_TOKEN
-Opcionais: ANTHROPIC_API_KEY (resumo com IA), FLICKR_API_KEY (busca fotos também no Flickr)
 (A página do Facebook só serve para hospedar a imagem por um instante: nada é publicado no Facebook.)
 """
 import argparse
 import json
 import os
-import shutil
-import subprocess
 import sys
-import tempfile
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
-import fotos as fotos_mod
-import resumo
-from noticias import chave_parecida, escolher, mais_manchetes
+from noticias import escolher
 
 PASTA = Path(__file__).resolve().parent
 CONFIG = json.loads((PASTA / "config.json").read_text(encoding="utf-8"))
 ESTADO = PASTA / "estado.json"
+FUSO = ZoneInfo("America/Sao_Paulo")
 
 
 def carregar_estado():
     if ESTADO.exists():
         return json.loads(ESTADO.read_text(encoding="utf-8"))
-    return {"postados": [], "fotos_usadas": []}
+    return {"ids": [], "palavras": []}
 
 
 def salvar_estado(est):
-    est["postados"] = est["postados"][-600:]  # guarda só os mais recentes
-    est["fotos_usadas"] = est.get("fotos_usadas", [])[-300:]
-    est["titulos"] = est.get("titulos", [])[-60:]  # ~3 dias de títulos, para não repetir o mesmo fato
+    est["ids"] = est["ids"][-800:]          # guarda só os mais recentes
+    est["palavras"] = est["palavras"][-400:]
     ESTADO.write_text(json.dumps(est, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def legenda(n, info, foto=None):
+def _rodape():
     tags = " ".join(CONFIG.get("hashtags", []))
-    time_tag = "#" + n["termo"].lower().replace(" ", "")
-    site = f" ({n['site']})" if n.get("site") else ""
-    partes = [f"⚽ {n['termo'].upper()} | {info['selo']}", info["texto"], f"💬 {info['pergunta']}",
-              f"📰 Fonte da informação: {n['fonte'] or 'imprensa'}{site}"]
-    if foto:
-        partes[-1] += f"\n📸 Foto: {fotos_mod.credito(foto)}"
-    redes = CONFIG.get("redes", {})
-    if redes:
-        partes.append("👉 Siga o " + CONFIG.get("nome_legenda", CONFIG["nome_pagina"]) + ": " +
-                      " | ".join(f"{ {'youtube': 'YouTube', 'tiktok': 'TikTok'}.get(k, k.capitalize())} {v}" for k, v in redes.items()))
+    return (f"Siga {CONFIG['arroba']} no YouTube, Instagram e TikTok e fique por dentro de tudo do Vasco 💢\n\n{tags}")
+
+
+def legenda(n):
+    foto = f"\n📷 {n['credito_foto']}" if n.get("credito_foto") else ""
+    return f"{n['titulo']}\n\n📰 Fonte: {n['fonte']}{foto}\n\n{_rodape()}"
+
+
+def legenda_estat(p):
+    return f"{p['titulo']} 📊\n\n{p['pergunta']} Comenta aqui 👇\n\n📊 Dados: NETVASCO\n\n{_rodape()}"
+
+
+def hora_de_estatistica(agora):
+    return agora.hour in CONFIG.get("horas_estatistica", [12, 19])
+
+
+def escolher_estatistica(est, exemplo=False):
+    """Um post de estatística que não saiu nos últimos dias (os números mudam a cada rodada)."""
+    from datetime import date
+    if exemplo:
+        sys.path.insert(0, str(PASTA / "dados"))
+        from netvasco_sim import dados as sim
+        dados = sim()
     else:
-        partes.append(f"Siga {CONFIG['arroba']} para mais notícias ⚽")
-    partes.append(f"{time_tag} {tags}")
-    return "\n\n".join(partes)
-
-
-def url_github(caminho):
-    """Publica a imagem num ramo separado do repositório ('midia', sempre só com a imagem atual,
-    para o repositório não crescer) e devolve o link público raw.githubusercontent.com."""
-    import requests
-    repo = os.environ.get("GITHUB_REPOSITORY")
-    if not repo:
-        raise RuntimeError("sem GITHUB_REPOSITORY: a hospedagem pelo GitHub só funciona dentro do GitHub Actions")
-    remoto = os.environ.get("MIDIA_REMOTO", f"https://github.com/{repo}.git")
-    cabecalho = subprocess.run(["git", "config", "--get", "http.https://github.com/.extraheader"],
-                               cwd=PASTA, capture_output=True, text=True).stdout.strip()
-    nome = f"{int(time.time())}_{Path(caminho).name}"
-    pasta = Path(tempfile.mkdtemp())
-    shutil.copy(caminho, pasta / nome)
-
-    def git(*args):
-        extra = ["-c", f"http.https://github.com/.extraheader={cabecalho}"] if cabecalho else []
-        subprocess.run(["git", *extra, *args], cwd=pasta, check=True, capture_output=True, text=True)
-
-    git("init", "-q")
-    git("checkout", "-q", "-b", "midia")
-    git("config", "user.name", "robo-noticias")
-    git("config", "user.email", "robo-noticias@users.noreply.github.com")
-    git("add", nome)
-    git("commit", "-q", "-m", "imagem do post")
-    git("push", "-q", "-f", remoto, "midia")
-    shutil.rmtree(pasta, ignore_errors=True)
-    url = f"https://raw.githubusercontent.com/{repo}/midia/{nome}"
-    for _ in range(12):  # espera o link ficar no ar (alguns segundos)
-        try:
-            if requests.head(url, timeout=15).status_code == 200:
-                break
-        except Exception:
-            pass
-        time.sleep(5)
-    print("   imagem hospedada:", url)
-    return url
+        import estatisticas
+        anos = CONFIG.get("temporadas_estatistica", [])
+        dados = {}
+        for a in anos:
+            try:
+                dados[a] = estatisticas.temporada(a)
+            except Exception as ex:
+                print(f"  [aviso] estatísticas {a}: {ex}")
+        if len(dados) < 2:
+            return None
+    from estatisticas import ideias
+    feitos = est.setdefault("estat", {})
+    hoje = date.today()
+    intervalo = CONFIG.get("dias_entre_repeticoes", 10)
+    for p in sorted(ideias(dados), key=lambda p: feitos.get(p["id"], "0000")):
+        ultima = feitos.get(p["id"])
+        if not ultima or (hoje - date.fromisoformat(ultima)).days >= intervalo:
+            return p
+    return None
 
 
 class Meta:
@@ -125,17 +109,7 @@ class Meta:
         return d
 
     def url_publica(self, caminho):
-        """Link público da imagem para o Instagram buscar.
-        1º tenta pela Página (foto NÃO publicada); se o app não tiver essa permissão, hospeda no GitHub."""
-        if not getattr(self, "_pagina_recusou", False):
-            try:
-                return self._url_pela_pagina(caminho)
-            except Exception as ex:
-                print("   [aviso] a Página não aceitou hospedar a imagem; usando o GitHub:", str(ex)[:120])
-                self._pagina_recusou = True
-        return url_github(caminho)
-
-    def _url_pela_pagina(self, caminho):
+        """Sobe a foto NÃO publicada na página do Facebook só para ter um link público para o Instagram."""
         with open(caminho, "rb") as f:
             r = self.rq.post(f"{self.base}/{self.page}/photos", data={"published": "false", "access_token": self.token},
                              files={"source": (Path(caminho).name, f, "image/jpeg")}, timeout=120)
@@ -169,81 +143,76 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--teste", action="store_true")
     ap.add_argument("--exemplo", action="store_true", help="usa notícias de exemplo (sem internet)")
+    ap.add_argument("--estatistica", action="store_true", help="força um post de estatística agora")
     args = ap.parse_args()
 
     est = carregar_estado()
+    agora_br = datetime.now(FUSO)
+    from artes import Renderizador
+    meta = None if args.teste else Meta()
+    saida = PASTA / ("teste" if args.teste else "saida")
+
+    # ---------- horário de ESTATÍSTICA (12h e 19h por padrão)
+    if args.estatistica or (not args.exemplo and hora_de_estatistica(agora_br)):
+        p = escolher_estatistica(est, exemplo=args.exemplo)
+        if p:
+            with Renderizador() as r:
+                campos = {**CONFIG, **p}
+                print(f"• estatística: {p['titulo']}")
+                feed = r.gerar("estatistica", campos, saida / "estat_feed.jpg")
+                story = r.gerar("estatistica_story", campos, saida / "estat_story.jpg") if CONFIG.get("postar_story") else None
+                if args.teste:
+                    print("   artes:", feed.name, story.name if story else "")
+                    return
+                print("   ✔ feed", meta.publicar(feed, legenda_estat(p)))
+                if story:
+                    try:
+                        print("   ✔ story", meta.publicar(story, story=True))
+                    except Exception as ex:
+                        print("   ✖ story:", ex)
+                est["estat"][p["id"]] = agora_br.date().isoformat()
+                salvar_estado(est)
+            return
+        print("Sem estatística nova; segue com notícia.")
+
+    # ---------- NOTÍCIA
     if args.exemplo:
         agora = datetime.now(timezone.utc)
-        fila = [{"id": "ex1", "titulo": "Vasco acerta a contratação de reforço para o meio-campo e jogador chega nesta semana",
-                 "fonte": "ge", "site": "ge.globo.com", "termo": "Vasco", "quando": agora, "link": ""},
-                {"id": "ex2", "titulo": "Palmeiras divulga relacionados para o clássico e tem retorno no ataque",
-                 "fonte": "UOL", "site": "uol.com.br", "termo": "Palmeiras", "quando": agora, "link": ""}]
+        fila = [{"id": "ex1", "titulo": "Vasco acerta compra de Robert Renan e traça plano para zagueiro chegar à Seleção Brasileira",
+                 "fonte": "NETVASCO", "quando": agora, "link": "", "palavras": []}]
     else:
-        fila = escolher(CONFIG, est["postados"], est.get("titulos", []), est.get("ultimo_time"))
-    fila = fila[: (len(fila) if args.exemplo else CONFIG.get("max_por_execucao", 1))]
+        fila = escolher(CONFIG, est)
+    fila = fila[: CONFIG.get("max_por_execucao", 1)]
     if not fila:
         print("Nenhuma notícia nova agora.")
         return
 
-    from artes import Renderizador
-    meta = None if args.teste else Meta()
-    saida = PASTA / ("teste" if args.teste else "saida")
+    import fotos
     erro = False
     with Renderizador() as r:
-        for i, n in enumerate(fila):
+        for k, n in enumerate(fila):
             print(f"• {n['titulo']} ({n['fonte']})")
-            num = len(est["postados"]) + (i if args.teste else 0)
-            if not args.exemplo:
-                try:  # junta manchetes de outros veículos sobre o mesmo fato, para o resumo ficar completo
-                    extras = mais_manchetes(n)
-                    n["relacionadas"] = list(dict.fromkeys(n.get("relacionadas", []) + extras))
-                except Exception as ex:
-                    print("  [aviso] não consegui buscar mais manchetes:", ex)
-            info = resumo.gerar(n, CONFIG)
-            print(f"  texto {'(IA)' if info['por_ia'] else '(plano B)'}: {info['titulo_arte']}")
-            if args.exemplo:
-                foto = {"id": "exemplo", "arquivo": PASTA / "exemplo" / "foto_provisoria.jpg",
-                        "autor": "Nome do Fotógrafo", "origem": "Wikimedia Commons", "licenca": "CC BY-SA 4.0",
-                        "licenca_url": "https://creativecommons.org/licenses/by-sa/4.0"}
-            else:
-                foto = fotos_mod.escolher_foto(info["pessoas"], n, CONFIG, est.get("fotos_usadas", []))
-                if foto:
-                    try:
-                        foto["arquivo"] = fotos_mod.baixar(foto["url"], saida / f"{num}_foto_original.jpg")
-                    except Exception as ex:
-                        print("  [aviso] não consegui baixar a foto, vai só texto:", ex)
-                        foto = None
-            campos = {**CONFIG, **n, "titulo": info["titulo_arte"], "resumo_curto": info["linha_fina"],
-                      "selo": info["selo"]}
-            if foto:
-                campos.update(foto_arquivo=Path(foto["arquivo"]).resolve().as_uri(),
-                              foto_autor=f"{foto['autor']} / {foto['origem']}",
-                              foto_licenca=f"{foto['licenca']} (editada)")
-                d_feed, d_story = "noticia_foto", "story_foto"
-            else:
-                d_feed, d_story = "noticia", "story"
-            feed = r.gerar(d_feed, campos, saida / f"{num}_feed.jpg")
-            story = r.gerar(d_story, campos, saida / f"{num}_story.jpg") if CONFIG.get("postar_story") else None
-            texto = legenda(n, info, foto)
+            if CONFIG.get("usar_fotos", True) and not args.exemplo:
+                arq = saida / f"foto_{k}.jpg"
+                cred = fotos.baixar_foto(n["titulo"], arq)
+                if cred:
+                    n["foto"], n["credito_foto"] = arq.resolve().as_uri(), cred
+                    print("   📷", cred)
+            campos = {**CONFIG, **n}
+            feed = r.gerar("noticia", campos, saida / f"{k}_feed.jpg")
+            story = r.gerar("story", campos, saida / f"{k}_story.jpg") if CONFIG.get("postar_story") else None
             if args.teste:
-                (saida / f"{num}_legenda.txt").write_text(texto, encoding="utf-8")
-                print("   artes:", feed.name, story.name if story else "", f"| legenda: {num}_legenda.txt")
+                print("   artes:", feed.name, story.name if story else "")
                 continue
             try:
-                print("   ✔ feed", meta.publicar(feed, texto))
-                if story:  # story automático logo depois do feed (tenta 2 vezes)
-                    for tentativa in (1, 2):
-                        try:
-                            print("   ✔ story", meta.publicar(story, story=True))
-                            break
-                        except Exception as ex:
-                            print(f"   ✖ story (tentativa {tentativa}):", ex)
-                            time.sleep(20)
-                est["postados"] += [n["id"], chave_parecida(n["titulo"])]
-                est.setdefault("titulos", []).append(n["titulo"])
-                est["ultimo_time"] = n["termo"]
-                if foto:
-                    est.setdefault("fotos_usadas", []).append(foto["id"])
+                print("   ✔ feed", meta.publicar(feed, legenda(n)))
+                if story:
+                    try:
+                        print("   ✔ story", meta.publicar(story, story=True))
+                    except Exception as ex:
+                        print("   ✖ story:", ex)
+                est["ids"].append(n["id"])
+                est["palavras"].append(n["palavras"])
                 salvar_estado(est)
             except Exception as ex:
                 print("   ✖ feed:", ex)
