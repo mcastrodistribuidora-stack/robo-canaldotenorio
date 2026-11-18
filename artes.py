@@ -3,7 +3,7 @@ Transforma os designs (HTML) em imagens JPEG usando o navegador Chromium.
 
 Uso no código:
     with Renderizador() as r:
-        r.gerar("oferta", campos, "saida/x.jpg")
+        r.gerar("noticia", campos, "saida/x.jpg")
 """
 from pathlib import Path
 
@@ -13,7 +13,7 @@ from designs import DESIGNS
 
 PASTA = Path(__file__).resolve().parent
 TPL = PASTA / "templates"
-STORIES = {"story", "estatistica_story"}
+STORIES = {"story", "story_foto", "estatistica_story"}
 
 
 class Renderizador:
@@ -32,6 +32,7 @@ class Renderizador:
         story = design in STORIES
         altura = 1920 if story else 1350
         self._pag.set_viewport_size({"width": 1080, "height": altura})
+        TPL.mkdir(exist_ok=True)
         tmp = TPL / "_tmp_arte.html"
         tmp.write_text(DESIGNS[design](campos), encoding="utf-8")
         self._pag.goto(tmp.as_uri())

@@ -1,17 +1,58 @@
 {
   "nome_pagina": "CANAL DO TENÓRIO",
+  "nome_legenda": "Canal do Tenório",
   "arroba": "@canaldotenorio",
-  "redes": "YouTube · Instagram · TikTok",
-  "buscas_google": ["Vasco", "\"Vasco da Gama\"", "vascaíno OR vascaínos", "\"São Januário\""],
-  "feeds_diretos": {"NETVASCO": "https://www.netvasco.com.br/news/rss.xml"},
-  "ignorar_se_tiver": ["vasco rossi", "vasco palmeirim", "vasco seabra", "vasco matos", "vasco botelho"],
+  "redes": {
+    "instagram": "@canaldotenorio",
+    "youtube": "@canaldotenorio",
+    "tiktok": "@canaldotenorio"
+  },
+  "times": ["Vasco"],
+  "palavras_time": {
+    "Vasco": ["Vasco", "Vasco da Gama", "Cruz-Maltino", "Cruzmaltino", "Vascaíno", "Vascaínos", "São Januário"]
+  },
+  "busca_extra": [],
+  "buscar_nos_sites": ["ge.globo.com", "uol.com.br", "espn.com.br", "lance.com.br", "terra.com.br", "supervasco.com", "netvasco.com.br"],
+  "feeds_diretos": {
+    "Vasco": {"NETVASCO": "https://www.netvasco.com.br/news/rss.xml"}
+  },
+  "fontes_prioritarias": ["ge", "UOL", "NETVASCO"],
+  "fontes_time": {
+    "Vasco": ["SuperVasco", "Vasco Notícias", "O Dia", "Extra", "Jornal dos Sports"]
+  },
+  "fontes_preferidas": ["Lance!", "ESPN", "CNN Brasil", "Terra", "O Globo", "Placar", "Estadão", "Folha", "Trivela"],
+  "so_fontes_conhecidas": false,
   "max_por_execucao": 1,
   "horas_maximas_da_noticia": 12,
   "postar_story": true,
-  "usar_fotos": true,
-  "horas_estatistica": [12, 19],
-  "temporadas_estatistica": [2024, 2025, 2026],
-  "dias_entre_repeticoes": 10,
-  "cores": {"fundo": "#0A0A0A", "texto": "#FFFFFF", "suave": "#9A9A9A", "detalhe": "#D21F2B"},
-  "hashtags": ["#Vasco", "#VascoDaGama", "#Vascaínos", "#GigantedaColina", "#futebol"]
+  "cores": {
+    "fundo": "#0A0A0A",
+    "destaque": "#FFFFFF",
+    "detalhe": "#D21F2B",
+    "texto": "#FFFFFF",
+    "suave": "#9A9A9A"
+  },
+  "hashtags": ["#Vasco", "#VascoDaGama", "#Vascaínos", "#futebolbrasileiro", "#canaldotenorio"],
+  "resumo_ia": {
+    "usar": true,
+    "modelo": "claude-haiku-5-5"
+  },
+  "fotos": {
+    "usar": true,
+    "fontes": ["commons", "flickr"],
+    "aceitar_nao_comercial": false,
+    "fotos_time": {
+      "Vasco": [
+        {"busca": "Estádio São Januário", "exigir": ["januario"]},
+        {"busca": "CR Vasco da Gama football", "exigir": ["vasco"]}
+      ]
+    }
+  },
+  "torcedor": {"Vasco": "vascaíno"},
+  "estatisticas": {
+    "usar": true,
+    "horas": [12, 19],
+    "temporadas": [2024, 2025, 2026],
+    "dias_entre_repeticoes": 10
+  }
 }

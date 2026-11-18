@@ -1,87 +1,217 @@
 """
-Fotos automáticas com LICENÇA LIVRE (Wikimedia Commons, o banco de imagens da Wikipédia).
+Busca FOTOS REAIS COM LICENÇA LIVRE para a notícia, sozinho.
 
-1. Procura nomes próprios na manchete (ex.: "Robert Renan", "Andrés Gómez") e busca a foto da pessoa.
-2. Se não achar, usa uma foto de São Januário.
-3. Sempre devolve o crédito exigido pela licença (autor + licença).
-Se nada der certo, a arte sai no modelo só com texto.
+Fontes:
+  - Wikimedia Commons (não precisa de chave)
+  - Flickr (opcional: só se existir o secret FLICKR_API_KEY)
+
+Regras de segurança (direitos autorais):
+  - Só aceita licenças que permitem uso e edição: CC0, domínio público, CC BY e CC BY-SA.
+  - Recusa "ND" (proíbe editar, e a arte edita a foto).
+  - Recusa "NC" (proíbe uso comercial), a não ser que config.json diga "aceitar_nao_comercial": true.
+  - Guarda o nome do autor, a licença e o link, para o crédito na arte e na legenda.
+  - Confere se o nome do jogador/estádio aparece na descrição da foto, para não pegar foto errada.
 """
 import html
 import json
+import os
 import re
+import unicodedata
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-API = "https://commons.wikimedia.org/w/api.php"
-UA = {"User-Agent": "robo-noticias-vasco/1.0 (Instagram; contato via GitHub)"}
-LICENCAS_OK = ("cc0", "cc by", "cc-by", "public domain", "domínio público", "pd")
-NAO_NOMES = {"Vasco", "Gama", "Brasileirão", "Brasileiro", "Copa", "Série", "Sul", "Americana", "Libertadores", "Seleção",
-             "Brasileira", "Rio", "Janeiro", "Carioca", "São", "Januário", "Sub", "Veja", "Após", "Saiba", "Entenda", "Cruz", "Malta"}
+UA = "RoboNoticiasFutebol/1.0 (robo de noticias de futebol para Instagram; uso com credito)"
+COMMONS = "https://commons.wikimedia.org/w/api.php"
+FLICKR = "https://api.flickr.com/services/rest/"
 
 
-def _get(params):
-    url = API + "?" + urllib.parse.urlencode({**params, "format": "json"})
-    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30) as r:
-        return json.loads(r.read())
+# ---------------------------------------------------------------- utilidades
+def _get_json(url, params):
+    req = urllib.request.Request(f"{url}?{urllib.parse.urlencode(params)}", headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode("utf-8"))
 
 
-def nomes_da_manchete(titulo):
-    """Sequências de 2-3 palavras com inicial maiúscula (sem a primeira palavra da frase)."""
-    palavras = titulo.split()
-    achados, atual = [], []
-    for i, w in enumerate(palavras):
-        limpo = re.sub(r"[^\wÀ-ÿ'-]", "", w)
-        if i > 0 and limpo[:1].isupper() and limpo not in NAO_NOMES and len(limpo) > 1:
-            atual.append(limpo)
-        else:
-            if len(atual) >= 2:
-                achados.append(" ".join(atual[:3]))
-            atual = []
-        if w.endswith((",", ":", ";", ".")) and len(atual) >= 2:
-            achados.append(" ".join(atual[:3]))
-            atual = []
-    if len(atual) >= 2:
-        achados.append(" ".join(atual[:3]))
-    return list(dict.fromkeys(achados))
+def baixar(url, destino):
+    destino = Path(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        destino.write_bytes(r.read())
+    return destino
 
 
-def _sem_tags(s):
-    return html.unescape(re.sub(r"<[^>]+>", "", s or "")).strip()
+def sem_acento(t):
+    t = unicodedata.normalize("NFKD", t or "")
+    return "".join(ch for ch in t if not unicodedata.combining(ch)).lower()
 
 
-def _procurar(busca, exigir=None):
-    d = _get({"action": "query", "generator": "search", "gsrsearch": f"{busca} filetype:bitmap", "gsrnamespace": 6,
-              "gsrlimit": 8, "prop": "imageinfo", "iiprop": "url|extmetadata|size", "iiurlwidth": 1600})
-    paginas = sorted(d.get("query", {}).get("pages", {}).values(), key=lambda p: p.get("index", 99))
-    for p in paginas:
+def limpar_html(t):
+    t = re.sub(r"<[^>]+>", " ", t or "")
+    return re.sub(r"\s+", " ", html.unescape(t)).strip()
+
+
+def licenca_ok(nome, aceitar_nc=False):
+    """True se a licença permite usar e editar a foto (com crédito)."""
+    s = sem_acento(nome)
+    tok = set(re.split(r"[^a-z0-9]+", s))
+    if "nd" in tok or "noderivs" in s or "no derivatives" in s:
+        return False
+    if ("nc" in tok or "noncommercial" in s or "non-commercial" in s) and not aceitar_nc:
+        return False
+    if "cc0" in tok or "public domain" in s or "dominio publico" in s or s.startswith("pd") or "no known copyright" in s:
+        return True
+    if ("cc" in tok and "by" in tok) or "attribution" in s:
+        return True
+    return False  # licença desconhecida ou "uso justo": não usa
+
+
+CONTEXTO_FUTEBOL = ["football", "futebol", "soccer", "futbol", "fútbol", "calcio", "fussball", "fußball",
+                    "voetbal", "jogador", "player", "footballer", "futebolista", "seleção", "selecao",
+                    "national team", "fc ", " cf", "clube", "club", "stadium", "estádio", "estadio",
+                    "brasileirão", "libertadores", "copa", "cup", "league", "liga", "match", "partida",
+                    "treino", "training", "coach", "treinador", "técnico", "uefa", "fifa", "cbf", "conmebol"]
+
+
+def _tem_palavras(texto, exigir):
+    t = sem_acento(texto)
+    return all(sem_acento(p) in t for p in exigir)
+
+
+def _ano(t):
+    m = re.search(r"(19|20)\d\d", t or "")
+    return int(m.group(0)) if m else 0
+
+
+# ---------------------------------------------------------------- Wikimedia
+def _confere(titulo, texto_completo, exigir, pessoa):
+    """Pessoa: o nome tem que estar no NOME da foto e a foto tem que ser de futebol.
+    Estádio/time: basta a palavra aparecer em qualquer parte da descrição."""
+    if not pessoa:
+        return _tem_palavras(texto_completo, exigir)
+    return _tem_palavras(titulo, exigir) and _tem_palavras(texto_completo, []) and \
+        any(c in sem_acento(" " + texto_completo + " ") for c in map(sem_acento, CONTEXTO_FUTEBOL))
+
+
+def buscar_commons(busca, exigir, aceitar_nc=False, limite=40, pessoa=False):
+    dados = _get_json(COMMONS, {
+        "action": "query", "format": "json", "generator": "search", "gsrnamespace": 6,
+        "gsrsearch": f"{busca} filetype:bitmap", "gsrlimit": limite,
+        "prop": "imageinfo", "iiprop": "url|extmetadata|size|mime", "iiurlwidth": 1600,
+    })
+    saida = []
+    for p in (dados.get("query") or {}).get("pages", {}).values():
         info = (p.get("imageinfo") or [{}])[0]
-        meta = info.get("extmetadata", {})
-        lic = _sem_tags(meta.get("LicenseShortName", {}).get("value", ""))
-        if not any(l in lic.lower() for l in LICENCAS_OK):
+        meta = {k: (v or {}).get("value", "") for k, v in (info.get("extmetadata") or {}).items()}
+        if info.get("mime") not in ("image/jpeg", "image/png") or min(info.get("width", 0), info.get("height", 0)) < 700:
             continue
-        if info.get("width", 0) < 800:
+        if str(meta.get("NonFree", "")).lower() == "true":
             continue
-        if exigir and not all(w.lower() in p["title"].lower() for w in exigir.split()[:2]):
+        lic = meta.get("LicenseShortName") or meta.get("License", "")
+        if not licenca_ok(lic, aceitar_nc):
             continue
-        autor = _sem_tags(meta.get("Artist", {}).get("value", ""))[:60] or "Wikimedia Commons"
-        return {"url": info.get("thumburl") or info["url"], "credito": f"Foto: {autor} / Wikimedia Commons ({lic})"}
-    return None
+        titulo = " ".join([p.get("title", ""), limpar_html(meta.get("ObjectName"))])
+        texto = " ".join([titulo, limpar_html(meta.get("ImageDescription")), meta.get("Categories", "")])
+        if not _confere(titulo, texto, exigir, pessoa):
+            continue
+        autor = limpar_html(meta.get("Artist")) or "autor desconhecido"
+        autor = re.sub(r"\s*\(talk\)|\s*\(discussão\)", "", autor)[:70]
+        saida.append({
+            "id": p.get("title", ""), "url": info.get("thumburl") or info.get("url"),
+            "autor": autor, "licenca": lic, "licenca_url": meta.get("LicenseUrl", ""),
+            "pagina": info.get("descriptionurl", ""), "origem": "Wikimedia Commons",
+            "ano": _ano(meta.get("DateTimeOriginal") or meta.get("DateTime")),
+            "retrato": info.get("height", 0) >= info.get("width", 1),
+        })
+    return saida
 
 
-def baixar_foto(titulo, destino, plano_b="Estádio São Januário"):
-    """Salva a foto em destino e devolve o crédito; None se não achar."""
-    tentativas = [(n, n) for n in nomes_da_manchete(titulo)] + [(plano_b, None)]
-    for busca, exigir in tentativas:
-        try:
-            achou = _procurar(busca, exigir)
-            if not achou:
+# ---------------------------------------------------------------- Flickr
+_flickr_lic = None
+
+
+def _licencas_flickr(chave, aceitar_nc):
+    global _flickr_lic
+    if _flickr_lic is None:
+        d = _get_json(FLICKR, {"method": "flickr.photos.licenses.getInfo", "api_key": chave,
+                               "format": "json", "nojsoncallback": 1})
+        _flickr_lic = {str(l["id"]): l for l in d["licenses"]["license"]}
+    return {i: l for i, l in _flickr_lic.items() if licenca_ok(l["name"], aceitar_nc)}
+
+
+def buscar_flickr(busca, exigir, aceitar_nc=False, limite=40, pessoa=False):
+    chave = os.environ.get("FLICKR_API_KEY")
+    if not chave:
+        return []
+    lic = _licencas_flickr(chave, aceitar_nc)
+    d = _get_json(FLICKR, {
+        "method": "flickr.photos.search", "api_key": chave, "text": busca, "license": ",".join(lic),
+        "sort": "relevance", "content_type": 1, "media": "photos", "per_page": limite,
+        "extras": "owner_name,license,url_l,url_c,date_taken,description,tags",
+        "format": "json", "nojsoncallback": 1,
+    })
+    saida = []
+    for f in d.get("photos", {}).get("photo", []):
+        url = f.get("url_l") or f.get("url_c")
+        l = lic.get(str(f.get("license")))
+        if not url or not l:
+            continue
+        texto = " ".join([f.get("title", ""), (f.get("description") or {}).get("_content", ""), f.get("tags", "")])
+        if not _confere(f.get("title", ""), texto, exigir, pessoa):
+            continue
+        w, h = int(f.get("width_l") or f.get("width_c") or 0), int(f.get("height_l") or f.get("height_c") or 0)
+        saida.append({
+            "id": f"flickr:{f['id']}", "url": url, "autor": (f.get("ownername") or "autor no Flickr")[:70],
+            "licenca": l["name"], "licenca_url": l.get("url", ""),
+            "pagina": f"https://www.flickr.com/photos/{f['owner']}/{f['id']}", "origem": "Flickr",
+            "ano": _ano(f.get("datetaken")), "retrato": h >= w,
+        })
+    return saida
+
+
+# ---------------------------------------------------------------- escolha
+def buscas_para(pessoas, noticia, config):
+    """Lista de (busca, palavras obrigatórias, é_pessoa), da mais específica para a mais genérica."""
+    lista = []
+    for nome in pessoas:
+        partes = nome.split()
+        sobrenome = partes[-1] if partes else nome
+        lista.append((nome, [sobrenome] if len(partes) == 1 else [partes[0], sobrenome], True))
+    for item in (config.get("fotos", {}).get("fotos_time", {}).get(noticia.get("termo", ""), [])):
+        lista.append((item["busca"], item.get("exigir", []), False))
+    return lista
+
+
+def escolher_foto(pessoas, noticia, config, usadas=()):
+    cf = config.get("fotos", {})
+    if not cf.get("usar", True):
+        return None
+    nc = cf.get("aceitar_nao_comercial", False)
+    fontes = cf.get("fontes", ["commons", "flickr"])
+    usadas = set(usadas)
+    for busca, exigir, pessoa in buscas_para(pessoas, noticia, config):
+        achadas = []
+        for fonte, func in (("commons", buscar_commons), ("flickr", buscar_flickr)):
+            if fonte not in fontes:
                 continue
-            req = urllib.request.Request(achou["url"], headers=UA)
-            with urllib.request.urlopen(req, timeout=60) as r:
-                Path(destino).parent.mkdir(parents=True, exist_ok=True)
-                Path(destino).write_bytes(r.read())
-            return achou["credito"]
-        except Exception as e:
-            print(f"  [aviso] foto '{busca}': {e}")
+            try:
+                achadas += func(busca, exigir, nc, pessoa=pessoa)
+            except Exception as ex:
+                print(f"  [aviso] busca de foto em {fonte} falhou ({busca}): {ex}")
+        if not achadas:
+            continue
+        # prefere: foto ainda não usada, mais recente, em pé (encaixa melhor no 4:5)
+        achadas.sort(key=lambda f: (f["id"] in usadas, -f["ano"], not f["retrato"]))
+        escolhida = achadas[0]
+        print(f"  📸 foto: {escolhida['id']} | {escolhida['autor']} | {escolhida['licenca']}")
+        return escolhida
+    print("  (nenhuma foto livre encontrada; vai a arte só com texto)")
     return None
+
+
+def credito(foto):
+    """Texto de crédito exigido pelas licenças CC: autor, onde está, licença e aviso de edição."""
+    lic = foto["licenca"]
+    extra = f" ({foto['licenca_url']})" if foto.get("licenca_url") else ""
+    return f"{foto['autor']} / {foto['origem']}, {lic}{extra}. Foto editada (recorte e texto)."
