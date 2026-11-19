@@ -39,23 +39,25 @@ import editor  # noqa: E402
 CONFIG = json.loads((RAIZ / "config.json").read_text(encoding="utf-8")) if (RAIZ / "config.json").exists() else {}
 CANAL = CONFIG.get("nome_legenda", "Canal do Tenório")
 ARROBA = CONFIG.get("arroba", "@canaldotenorio")
-HASHTAGS = "#Vasco #VascoDaGama #Vascaínos #futebolbrasileiro #canaldotenorio #reels"
+HASHTAGS = "#futebol #futebolbrasileiro #canaldotenorio #reels"
 GRAPH = f"https://graph.facebook.com/{os.environ.get('GRAPH_VERSION', 'v27.0')}"
 
 PROMPT = """Você escreve a legenda de um Reels do Instagram do "{canal}" ({arroba}), um canal de um torcedor
 que grava vídeos reagindo a notícias de futebol. O áudio anexado é o do vídeo da notícia/entrevista.
 Título do vídeo: "{titulo}"
 
-1. Ouça o áudio e entenda o que foi dito.
+1. Ouça o áudio e entenda o que foi dito, QUEM falou e de QUAL time ele é / sobre qual time falou.
+   ATENÇÃO: o canal comenta futebol em geral. Fale SÓ dos times e pessoas que aparecem no áudio ou no título.
+   NUNCA cite um time que não foi mencionado (não presuma que o assunto é o Vasco).
 2. Escreva a legenda em português do Brasil, com palavras próprias (não transcreva o áudio inteiro):
-   - 1ª linha: uma chamada forte sobre o assunto (pode usar 1 emoji);
+   - 1ª linha: uma chamada forte sobre o assunto, com o time certo (pode usar 1 emoji);
    - um parágrafo curto (2 a 4 frases) contando o que a pessoa falou, atribuindo a fala a ela
      ("disse que...", "afirmou que..."). Use o nome que aparece no título. Use SÓ o que foi dito no áudio:
      não invente números, datas nem declarações;
    - uma pergunta direta para os torcedores darem a opinião nos comentários, ligada ao que foi dito
      (ex.: "E aí, você concorda com ele? Comenta aí 👇");
    - um convite para seguir: "Siga o {canal} ({arroba}) no Instagram, YouTube e TikTok ⚽";
-   - no fim, estas hashtags: {hashtags}, mais 2 ou 3 hashtags do assunto (times e pessoas citados)
+   - no fim, estas hashtags: {hashtags}, mais 3 ou 4 hashtags do assunto (SÓ os times e pessoas citados no vídeo)
 3. Tom de conversa de torcedor, sem ofender ninguém. Máximo de 1.500 caracteres.
 
 Responda SÓ com um JSON: {{"o_que_foi_dito": "resumo do áudio em 1 frase", "legenda": "a legenda completa"}}"""
