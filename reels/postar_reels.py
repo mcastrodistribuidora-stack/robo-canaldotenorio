@@ -63,23 +63,29 @@ Título do vídeo: "{titulo}"
 Responda SÓ com um JSON: {{"o_que_foi_dito": "resumo do áudio em 1 frase", "legenda": "a legenda completa"}}"""
 
 
-def legenda_reserva(titulo):
+def legenda_reserva(titulo, extras=""):
     return (f"🔥 {titulo}\n\nAssiste até o fim e me fala: você concorda? Comenta aí 👇\n\n"
-            f"Siga o {CANAL} ({ARROBA}) no Instagram, YouTube e TikTok ⚽\n\n{HASHTAGS}")
+            f"Siga o {CANAL} ({ARROBA}) no Instagram, YouTube e TikTok ⚽\n\n{HASHTAGS} {extras}".strip())
 
 
-def legenda_por_audio(lance, titulo):
+def garantir_hashtags(legenda, extras):
+    """Acrescenta no fim as hashtags pedidas (arquivo .hashtags.txt) que a IA não colocou."""
+    faltam = [h for h in extras.split() if h.lower() not in legenda.lower()]
+    return (legenda.rstrip() + " " + " ".join(faltam)) if faltam else legenda
+
+
+def legenda_por_audio(lance, titulo, extras=""):
     """Extrai o áudio do lance e pede à IA (Gemini) a legenda baseada no que foi falado."""
     chave = os.environ.get("GEMINI_API_KEY")
     if not chave:
         print("  [aviso] sem GEMINI_API_KEY: legenda padrão")
-        return legenda_reserva(titulo), ""
+        return legenda_reserva(titulo, extras), ""
     import requests
     mp3 = SAIDA / "audio_lance.mp3"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(lance), "-vn", "-ac", "1", "-ar", "16000",
                     "-b:a", "32k", str(mp3)], check=True)
     audio = base64.b64encode(mp3.read_bytes()).decode()
-    prompt = PROMPT.format(canal=CANAL, arroba=ARROBA, titulo=titulo, hashtags=HASHTAGS)
+    prompt = PROMPT.format(canal=CANAL, arroba=ARROBA, titulo=titulo, hashtags=(HASHTAGS + " " + extras).strip())
     for modelo in ("gemini-flash-latest", "gemini-flash-lite-latest"):
         for tentativa in (1, 2, 3):
             try:
@@ -96,11 +102,11 @@ def legenda_por_audio(lance, titulo):
                 d = json.loads(txt[txt.index("{"): txt.rindex("}") + 1])
                 leg = str(d.get("legenda", "")).strip()
                 if len(leg) > 40:
-                    return leg[:2100], str(d.get("o_que_foi_dito", ""))
+                    return garantir_hashtags(leg[:2100], extras), str(d.get("o_que_foi_dito", ""))
             except Exception as ex:
                 print(f"  [aviso] Gemini {modelo} (tentativa {tentativa}): {str(ex)[:160]}")
                 time.sleep(15 * tentativa)
-    return legenda_reserva(titulo), ""
+    return legenda_reserva(titulo, extras), ""
 
 
 # ---------------------------------------------------------------- Instagram (Reels)
@@ -231,7 +237,9 @@ def main():
             if fixa.exists():
                 legenda, dito = fixa.read_text(encoding="utf-8").strip(), "legenda pronta"
             else:
-                legenda, dito = legenda_por_audio(lance, titulo)
+                tags = lance.with_suffix(".hashtags.txt")  # hashtags extras (opcional), ex.: #palmeiras
+                extras = " ".join("#" + h.lstrip("#") for h in tags.read_text(encoding="utf-8").split()) if tags.exists() else ""
+                legenda, dito = legenda_por_audio(lance, titulo, extras)
             (SAIDA / f"{lance.stem}_legenda.txt").write_text(legenda, encoding="utf-8")
             print("  legenda:\n" + "\n".join("    " + l for l in legenda.splitlines()))
             if args.teste:
@@ -244,6 +252,7 @@ def main():
             lance.unlink()  # sai da fila (o repositório não cresce)
             txt.unlink(missing_ok=True)
             lance.with_suffix(".legenda.txt").unlink(missing_ok=True)
+            lance.with_suffix(".hashtags.txt").unlink(missing_ok=True)
         except Exception as ex:
             print("  ✖ erro:", ex)
             erro = True
