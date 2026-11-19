@@ -112,7 +112,29 @@ def _ok(r):
     return d
 
 
-def postar_reels(video, legenda):
+PENDENTE = PASTA / "pendente.json"
+
+
+def _esperar_e_publicar(cid, minutos=20):
+    """Espera o Instagram processar o vídeo (mostra o andamento) e publica. None se ainda não terminou."""
+    import requests
+    ig, token = os.environ["META_IG_USER_ID"], os.environ["META_PAGE_TOKEN"]
+    inicio, ultimo_aviso = time.time(), 0
+    while time.time() - inicio < minutos * 60:
+        s = _ok(requests.get(f"{GRAPH}/{cid}", params={"fields": "status_code,status", "access_token": token}, timeout=30))
+        if s.get("status_code") == "FINISHED":
+            return _ok(requests.post(f"{GRAPH}/{ig}/media_publish", data={"creation_id": cid, "access_token": token},
+                                     timeout=60))["id"]
+        if s.get("status_code") in ("ERROR", "EXPIRED"):
+            raise RuntimeError(f"Instagram recusou o vídeo: {s.get('status')}")
+        if time.time() - ultimo_aviso > 60:
+            print(f"  ... Instagram processando ({int((time.time() - inicio) / 60)} min): {s.get('status_code')} {s.get('status', '')}")
+            ultimo_aviso = time.time()
+        time.sleep(10)
+    return None
+
+
+def postar_reels(video, legenda, nome):
     """Sobe o vídeo direto para o Instagram (upload resumível) e publica como Reels."""
     import requests
     ig, token = os.environ["META_IG_USER_ID"], os.environ["META_PAGE_TOKEN"]
@@ -121,20 +143,14 @@ def postar_reels(video, legenda):
         "share_to_feed": "true", "access_token": token}, timeout=60))
     cid, uri = c["id"], c.get("uri") or f"https://rupload.facebook.com/ig-api-upload/{GRAPH.rsplit('/', 1)[1]}/{c['id']}"
     dados = Path(video).read_bytes()
-    _ok(requests.post(uri, headers={"Authorization": f"OAuth {token}", "offset": "0",
-                                    "file_size": str(len(dados))}, data=dados, timeout=600))
-    print("  vídeo enviado; o Instagram está processando...")
-    for _ in range(90):  # até ~7 minutos
-        s = _ok(requests.get(f"{GRAPH}/{cid}", params={"fields": "status_code,status", "access_token": token}, timeout=30))
-        if s.get("status_code") == "FINISHED":
-            break
-        if s.get("status_code") in ("ERROR", "EXPIRED"):
-            raise RuntimeError(f"Instagram recusou o vídeo: {s.get('status')}")
-        time.sleep(5)
-    else:
-        raise RuntimeError("Instagram demorou demais para processar o vídeo.")
-    return _ok(requests.post(f"{GRAPH}/{ig}/media_publish", data={"creation_id": cid, "access_token": token},
-                             timeout=60))["id"]
+    resp = _ok(requests.post(uri, headers={"Authorization": f"OAuth {token}", "offset": "0",
+                                           "file_size": str(len(dados))}, data=dados, timeout=900))
+    print(f"  vídeo enviado ({len(dados) / 1e6:.0f} MB): {resp}")
+    mid = _esperar_e_publicar(cid)
+    if mid is None:  # guarda para publicar na próxima rodada, sem enviar de novo
+        PENDENTE.write_text(json.dumps({"cid": cid, "arquivo": nome, "desde": time.time()}), encoding="utf-8")
+        raise RuntimeError("o Instagram ainda está processando; o robô publica na próxima rodada (sem reenviar)")
+    return mid
 
 
 # ---------------------------------------------------------------- principal
@@ -153,6 +169,25 @@ def main():
     SAIDA.mkdir(exist_ok=True)
     log = json.loads(LOG.read_text(encoding="utf-8")) if LOG.exists() else []
     erro = False
+    pend = json.loads(PENDENTE.read_text()) if PENDENTE.exists() else None
+    if pend and not args.teste:  # vídeo já enviado numa rodada anterior: só publica
+        print(f"• publicando o que ficou pendente: {pend['arquivo']}")
+        try:
+            mid = _esperar_e_publicar(pend["cid"], minutos=15)
+            if mid:
+                print("  ✔ Reels publicado:", mid)
+                PENDENTE.unlink()
+                log.append({"quando": datetime.now().isoformat(timespec="minutes"), "arquivo": pend["arquivo"],
+                            "instagram_id": mid})
+                LOG.write_text(json.dumps(log, ensure_ascii=False, indent=1), encoding="utf-8")
+                for f in ENTRADA.glob(Path(pend["arquivo"]).stem + ".*"):
+                    if f.name != "LEIA.txt":
+                        f.unlink()
+            else:
+                sys.exit("O Instagram ainda não terminou de processar o vídeo pendente. Rode de novo mais tarde.")
+        except RuntimeError as ex:
+            print("  ✖ o vídeo pendente falhou; vai enviar de novo:", ex)
+            PENDENTE.unlink()
     for lance, txt, titulo in pendentes():
         print(f"• {lance.name}: {titulo}")
         try:
@@ -162,7 +197,7 @@ def main():
             print("  legenda:\n" + "\n".join("    " + l for l in legenda.splitlines()))
             if args.teste:
                 continue
-            mid = postar_reels(reels, legenda)
+            mid = postar_reels(reels, legenda, lance.name)
             print("  ✔ Reels publicado:", mid)
             log.append({"quando": datetime.now().isoformat(timespec="minutes"), "titulo": titulo,
                         "arquivo": lance.name, "o_que_foi_dito": dito, "instagram_id": mid})

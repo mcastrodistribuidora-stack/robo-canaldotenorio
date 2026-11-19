@@ -21,7 +21,7 @@ concurrency:
 jobs:
   reels:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -51,7 +51,7 @@ jobs:
         run: |
           git config user.name "robo-reels"
           git config user.email "robo-reels@users.noreply.github.com"
-          git add -A reels/entrada reels/postados.json reels/base_estado.json 2>/dev/null || true
+          git add -A reels/entrada reels/postados.json reels/base_estado.json reels/pendente.json 2>/dev/null || true
           git diff --cached --quiet || git commit -m "Reels postado $(date -u +%Y-%m-%dT%H:%MZ)"
           git pull --rebase -q || true
           git push
