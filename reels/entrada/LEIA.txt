@@ -1,0 +1,2 @@
+Coloque aqui o vídeo do lance (ex.: abel.mp4) e um .txt com o MESMO nome contendo o título (ex.: abel.txt).
+O robô edita, escreve a legenda pelo áudio e posta o Reels sozinho.
