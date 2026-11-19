@@ -227,7 +227,11 @@ def main():
         print(f"• {lance.name}: {titulo}")
         try:
             reels = editor.montar(lance, titulo, SAIDA / f"{lance.stem}_reels.mp4")
-            legenda, dito = legenda_por_audio(lance, titulo)
+            fixa = lance.with_suffix(".legenda.txt")  # legenda pronta (opcional): usa ela no lugar da IA
+            if fixa.exists():
+                legenda, dito = fixa.read_text(encoding="utf-8").strip(), "legenda pronta"
+            else:
+                legenda, dito = legenda_por_audio(lance, titulo)
             (SAIDA / f"{lance.stem}_legenda.txt").write_text(legenda, encoding="utf-8")
             print("  legenda:\n" + "\n".join("    " + l for l in legenda.splitlines()))
             if args.teste:
@@ -239,6 +243,7 @@ def main():
             LOG.write_text(json.dumps(log, ensure_ascii=False, indent=1), encoding="utf-8")
             lance.unlink()  # sai da fila (o repositório não cresce)
             txt.unlink(missing_ok=True)
+            lance.with_suffix(".legenda.txt").unlink(missing_ok=True)
         except Exception as ex:
             print("  ✖ erro:", ex)
             erro = True
