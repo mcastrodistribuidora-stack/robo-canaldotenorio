@@ -211,8 +211,7 @@ def montar(lance, titulo, saida):
            "-filter_complex", ";".join(filtro), "-map", "[v]"]
     if tem_audio:
         cmd += ["-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000"]
-    cmd += ["-t", f"{dur:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-b:v", "9M", "-minrate", "8M",
-            "-maxrate", "12M", "-bufsize", "16M", "-pix_fmt", "yuv420p", "-r", "30",
+    cmd += ["-t", f"{dur:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-b:v", "8M", "-maxrate", "10M", "-bufsize", "16M", "-pix_fmt", "yuv420p", "-r", "30",
             "-movflags", "+faststart", str(temp_saida)]
     subprocess.run(cmd, check=True)
     temp_saida.replace(saida)

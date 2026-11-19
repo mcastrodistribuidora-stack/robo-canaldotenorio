@@ -136,18 +136,51 @@ def _esperar_e_publicar(cid, minutos=20):
     return None
 
 
+def hospedar_no_github(caminho):
+    """Publica o vídeo num ramo separado ('midia', sempre só com o arquivo atual, para o repositório não crescer)
+    e devolve o link público raw.githubusercontent.com, que o Instagram baixa."""
+    import requests
+    import shutil
+    import tempfile
+    repo = os.environ["GITHUB_REPOSITORY"]
+    cab = subprocess.run(["git", "config", "--get", "http.https://github.com/.extraheader"],
+                         cwd=RAIZ, capture_output=True, text=True).stdout.strip()
+    nome = f"{int(time.time())}_{Path(caminho).name}"
+    pasta = Path(tempfile.mkdtemp())
+    shutil.copy(caminho, pasta / nome)
+
+    def git(*args):
+        extra = ["-c", f"http.https://github.com/.extraheader={cab}"] if cab else []
+        subprocess.run(["git", *extra, *args], cwd=pasta, check=True, capture_output=True, text=True)
+
+    git("init", "-q")
+    git("checkout", "-q", "-b", "midia")
+    git("config", "user.name", "robo-reels")
+    git("config", "user.email", "robo-reels@users.noreply.github.com")
+    git("add", nome)
+    git("commit", "-q", "-m", "video do reels")
+    git("push", "-q", "-f", f"https://github.com/{repo}.git", "midia")
+    shutil.rmtree(pasta, ignore_errors=True)
+    url = f"https://raw.githubusercontent.com/{repo}/midia/{nome}"
+    for _ in range(24):
+        try:
+            if requests.head(url, timeout=20).status_code == 200:
+                break
+        except Exception:
+            pass
+        time.sleep(5)
+    print("  vídeo hospedado:", url)
+    return url
+
+
 def postar_reels(video, legenda, nome):
-    """Sobe o vídeo direto para o Instagram (upload resumível) e publica como Reels."""
+    """Publica como Reels: o Instagram baixa o vídeo de um link público (mais estável que o envio direto)."""
     import requests
     ig, token = os.environ["META_IG_USER_ID"], os.environ["META_PAGE_TOKEN"]
-    c = _ok(requests.post(f"{GRAPH}/{ig}/media", data={
-        "media_type": "REELS", "upload_type": "resumable", "caption": legenda,
-        "share_to_feed": "true", "access_token": token}, timeout=60))
-    cid, uri = c["id"], c.get("uri") or f"https://rupload.facebook.com/ig-api-upload/{GRAPH.rsplit('/', 1)[1]}/{c['id']}"
-    dados = Path(video).read_bytes()
-    resp = _ok(requests.post(uri, headers={"Authorization": f"OAuth {token}", "offset": "0",
-                                           "file_size": str(len(dados))}, data=dados, timeout=900))
-    print(f"  vídeo enviado ({len(dados) / 1e6:.0f} MB): {resp}")
+    url = hospedar_no_github(video)
+    cid = _ok(requests.post(f"{GRAPH}/{ig}/media", data={
+        "media_type": "REELS", "video_url": url, "caption": legenda,
+        "share_to_feed": "true", "access_token": token}, timeout=60))["id"]
     mid = _esperar_e_publicar(cid)
     if mid is None:  # guarda para publicar na próxima rodada, sem enviar de novo
         PENDENTE.write_text(json.dumps({"cid": cid, "arquivo": nome, "desde": time.time()}), encoding="utf-8")
