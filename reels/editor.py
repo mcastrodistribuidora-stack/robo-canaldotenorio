@@ -122,19 +122,19 @@ def quebrar(texto, fonte, largura_max):
 
 
 def imagem_titulo(texto, destino):
-    """PNG transparente 1080 de largura com as faixas brancas e o texto preto (máx. 2 linhas)."""
-    tam = FONTE_PX
-    while True:
-        fonte = ImageFont.truetype(str(FONTE), tam)
-        linhas = quebrar(texto, fonte, W - 80)
-        if len(linhas) <= 2 or tam <= 40:
+    """PNG transparente 1080 de largura com as faixas brancas e o texto preto.
+    Título nunca é cortado: diminui a fonte até caber em 2 linhas (mín. 40 px);
+    se for muito longo, usa 3 linhas e segue diminuindo (mín. 30 px), e só então 4 linhas."""
+    for max_linhas, minimo in ((2, 40), (3, 30), (4, 30)):
+        tam = FONTE_PX
+        while True:
+            fonte = ImageFont.truetype(str(FONTE), tam)
+            linhas = quebrar(texto, fonte, W - 80)
+            if len(linhas) <= max_linhas or tam <= minimo:
+                break
+            tam -= 2
+        if len(linhas) <= max_linhas:
             break
-        tam -= 2
-    if len(linhas) > 2:  # ainda não coube: corta com reticências
-        linhas = linhas[:2]
-        while fonte.getlength(linhas[1] + "…") + 2 * FAIXA_PAD_X > W - 80:
-            linhas[1] = linhas[1].rsplit(" ", 1)[0]
-        linhas[1] += "…"
     sobe, desce = fonte.getmetrics()
     alt_linha = sobe + desce + 2 * FAIXA_PAD_Y
     altura = len(linhas) * alt_linha + (len(linhas) - 1) * ENTRE_LINHAS
